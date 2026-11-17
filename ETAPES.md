@@ -106,30 +106,34 @@ C'est **l'outil de validation de toutes les étapes**. Si les sorties diffèrent
 
 ## Étape 3 — Représentation des `Either` en Go
 
-**But** : définir en Go **une seule** façon de représenter tous les résultats `Either` (success, fail, left, et leurs unions), rapide et réutilisable. C'est la fondation des projets 01 à 10.
+**But** : mettre en place en Go la représentation des `Either` **décidée en équipe** (D-09, ✅) : tag entier, `Either[T]` ou `Either2[R, L]`. C'est la fondation des projets 01 à 10.
 
 **À lire avant** :
-- `DECISIONS.md`, section D-09 (les options et la recommandation) ;
-- `src/transpiler/transformers/duplojs/either/success/sharedDependency.ts` (le type `EitherSuccess[T]` existant) ;
+- `DECISIONS.md`, section **D-09** (le choix, la règle `Either` / `Either2`, les raisons) ;
+- `src/transpiler/transformers/duplojs/either/success/sharedDependency.ts` (le type `EitherSuccess[T]` actuel, **à remplacer**) ;
 - la sortie de référence du projet 04, dans `EXERCICES.md`, pour voir à quoi ressemble un `fail`.
 
 **À faire** :
-1. **Écrire le Go à la main d'abord**, dans un fichier de brouillon : un type qui peut représenter `Success<number> | Fail | Left<"negative-operand", number>`. Il doit contenir :
-   - un **tag entier** pour la variante (constantes `TagSuccess`, `TagFail`, …), plutôt qu'une comparaison de chaînes ;
-   - le côté (`right` ou `left`), l'information (en chaîne, pour l'affichage) et la valeur ;
-   - les constructeurs `EitherSuccessOf[T]`, `EitherFailOf()`, `EitherLeftOf[T](info, v)` ;
-   - une méthode qui donne les clés d'affichage dans le **même ordre que DuploJS** : `left`/`right`, `information`, `value`, puis `fail`/`success`.
-2. **Faire valider le choix par l'équipe**, puis le noter dans `DECISIONS.md` (passer D-09 en ✅).
-3. Le traduire en shared dependency, sur le modèle de `success/sharedDependency.ts`. On en fait une par opération : `fail/`, `left/`, etc.
-4. Gérer la conversion d'une variante vers le type d'union, quand une fonction a plusieurs `return`.
+1. **Écrire le Go à la main d'abord**, dans un fichier de brouillon hors du repo :
+   - `type EitherTag uint8`, les constantes (`TagSuccess`, `TagFail`, `TagNegativeOperand`, `TagDivisionByZero`), les tables `isRightTag[tag]` et `informationName[tag]`, et la méthode `String()` ;
+   - `type Either[T any] struct { Tag EitherTag; Value T }` ;
+   - `type Either2[R, L any] struct { Tag EitherTag; Right R; Left L }` ;
+   - les constructeurs `EitherSuccessOf[T](v)`, `EitherFailOf[T]()`, `EitherLeftOf[T](tag, v)`.
+
+   Vérifier que ça compile (`go build`).
+2. **Générer les constantes de tag** : le transpileur doit rassembler toutes les informations utilisées dans le programme (`"success"`, `"fail"`, et chaque premier argument de `left(...)`), puis produire les constantes et les deux tables. `"success"` et `"fail"` sont toujours présents.
+3. **Choisir `Either` ou `Either2` à partir d'un type TypeScript** : un transformer de type qui reçoit une union d'`Either` et applique la règle de D-09.2 avec le checker (types de chaque variante, `Fail` compatible avec tout).
+4. Remplacer `EitherSuccess[T]` par ce type dans `success/`, puis créer les shared dependencies `fail/` et `left/` sur le même modèle.
+5. **Conversion vers le type d'union** : quand une fonction a plusieurs `return`, chaque valeur doit avoir le type de retour de la fonction. Comme les variantes partagent la même struct, c'est direct (`Either[float64]{Tag: TagFail}`).
 
 **Où** : `src/transpiler/transformers/duplojs/either/` (un dossier par opération).
 
 **Attention** :
 - `success` a un paramètre de type `const` : `success(1)` a le type `Success<1>`, pas `Success<number>`. Il faut **élargir** le type littéral vers `number` (le checker a de quoi le faire).
-- Un `fail` a pour valeur `undefined`, qui s'affiche `undefined` (voir `JSUndefined` dans les dépendances par défaut).
+- Un `fail` a pour valeur `undefined`. Dans la struct, la valeur reste à zéro, et c'est le **tag** qui permettra à `print` d'afficher `undefined`.
+- Il faut coordonner avec l'étape 4 (`print`) : `Inspect` doit savoir afficher un `Either` / `Either2` dans l'ordre de DuploJS (`right`/`left`, `information`, `value`, `success`/`fail`).
 
-**Fini quand** : le type est validé en équipe et noté dans `DECISIONS.md`, et un programme Go écrit à la main avec ces types compile.
+**Fini quand** : `./.commands/check.sh 00` passe toujours avec le nouveau type, et le Go généré pour `add` du projet 04 (avec `fail` et `success`) compile.
 
 ---
 
@@ -228,18 +232,21 @@ Les règles à reproduire :
 - le routeur existant : `src/transpiler/transformers/duplojs/either/index.ts`.
 
 **À faire** : ajouter un `DPattern.match` dans le routeur, et un dossier handler par fonction.
+Chaque fonction devient un **helper Go générique écrit une fois à la main** (D-09.3), livré comme shared dependency. Le handler génère seulement l'appel à ce helper.
 
-| Fonction | Traduction visée (D-09 : helpers déroulés) | Projets |
-|---|---|---|
-| `fail()` | constructeur `EitherFailOf()` | 04 |
-| `left(info, v)` | constructeur avec le tag de `info` | 06 |
-| `isRight(r)` | `r.Tag` est une variante droite | 01 |
-| `whenIsRight(r, f)` | `if` droite { appliquer `f` } sinon { garder `r` } | 02, 03 |
-| `whenIsRightOtherwise(r, f, g)` | `if` droite { `f(valeur)` } sinon { `g()` } | 05+ |
-| `matchInformation(r, { … })` | `switch r.Tag { case …: }` | 06, 07 |
-| `rightPipe(r, f, g…)` | une suite de `if` gauche { s'arrêter } sinon { étape suivante } | 07, 08 |
-| `group([…])` | boucle qui s'arrête au premier `left`, sinon slice des valeurs | 09 |
-| types `Fail`, `Left<…>`, unions | type d'union de l'étape 3 | 01, 04 |
+| Fonction TS | Helper Go à écrire (shared dependency) | Appel généré | Projets |
+|---|---|---|---|
+| `fail()` | `EitherFailOf[T]() Either[T]` | `EitherFailOf[float64]()` | 04 |
+| `left(info, v)` | `EitherLeftOf[T](tag, v) Either[T]` | `EitherLeftOf(TagNegativeOperand, v)` | 06 |
+| `isRight(r)` | `IsRight[T](r Either[T]) bool` (lit `isRightTag[r.Tag]`) | `IsRight(r)` | 01 |
+| `whenIsRight(r, f)` | `WhenIsRight[T, U](r, f func(T) U) Either[U]` | `WhenIsRight(r, f)` | 02, 03 |
+| `whenIsRightOtherwise(r, f, g)` | `WhenIsRightOtherwise[T, U](r, f, g func() U) U` | `WhenIsRightOtherwise(r, f, g)` | 05+ |
+| `matchInformation(r, { … })` | `MatchInformation[T, U](r, handlers []func(T) U) U`, avec les handlers **rangés par numéro de tag** (un slice : pas de map, plus rapide) | `MatchInformation(r, []func(float64) string{…})` | 06, 07 |
+| `rightPipe(r, f, g…)` | `RightThen[T, U](r Either[T], f func(T) Either[U]) Either[U]`, à **deux** arguments (Go n'a pas de génériques variadiques) | `RightThen(RightThen(r, f), g)` : appels emboîtés | 07, 08 |
+| `group([…])` | `Group[T](rs []Either[T]) Either2[[]T, T]`, qui s'arrête au premier `left` | `Group(calculations)` | 09 |
+| types `Fail`, `Left<…>`, unions | — | `Either[T]` ou `Either2[R, L]` selon la règle de D-09.2 (étape 3) | 01, 04, 09 |
+
+**Conseil** : écrire et tester chaque helper dans un petit programme Go à part (`go run`) **avant** d'écrire le handler qui génère son appel.
 
 **Attention** : les formes **sans données** (`DEither.whenIsRight(fn)`, utilisée dans un `pipe` ou un `map`) se traduisent avec l'étape 8. Le `pipe` fournit la donnée.
 
@@ -306,7 +313,8 @@ Les règles à reproduire :
 
 **À faire** :
 1. `go build -gcflags=-m ./...` dans un `dist/` : repérer les valeurs allouées sur le tas (`escapes to heap`) et les supprimer quand c'est possible.
-2. Écrire un benchmark (`go test -bench`) qui compare notre représentation des `Either` à une version `interface{}` / `any`, pour justifier D-09 avec des chiffres.
-3. Rendre les noms de package lisibles (bug B-02) : utiliser le chemin relatif, pas le chemin absolu.
-4. Relire le Go généré des projets : supprimer les temporaires inutiles et les conversions redondantes.
-5. Résumer les chiffres et les choix dans `DECISIONS.md`, pour la présentation.
+2. Écrire un benchmark (`go test -bench`) qui compare notre représentation des `Either` (tag entier, D-09.1) à une version `interface{}` / `any` et à une version avec l'information en chaîne, pour justifier D-09 avec des chiffres.
+3. **Dérouler à la compilation les helpers qui coûtent** (D-09.3) : seulement ceux que `-gcflags=-m` ou le benchmark désignent (probablement `IsRight`, et les closures de `WhenIsRight` si elles sont allouées sur le tas). Mesurer avant et après.
+4. Rendre les noms de package lisibles (bug B-02) : utiliser le chemin relatif, pas le chemin absolu.
+5. Relire le Go généré des projets : supprimer les temporaires inutiles et les conversions redondantes.
+6. Résumer les chiffres et les choix dans `DECISIONS.md`, pour la présentation.

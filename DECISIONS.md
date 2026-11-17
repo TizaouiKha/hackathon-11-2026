@@ -58,28 +58,76 @@ Statuts : ✅ adopté · 🟡 proposé (à valider en équipe) · ❌ écarté.
 - Même représentation IEEE 754 double que JS.
 - Spécialisation en `int` seulement si une garantie le permet (voir le cours « Stratégies », slide 14). Pas prévu pour l'instant.
 
-### D-09 · Représentation des `Either` — 🟡 (décision clé, bloque les exercices 01 à 10)
-Options étudiées, de la moins à la plus performante :
+### D-09 · Représentation des `Either` — ✅ décidé en équipe (17/11/2026)
 
-| Option | Perf | Effort | Verdict |
+Trois questions ont été tranchées. Le comparatif complet des points forts et faibles est en bas de cette section.
+
+#### D-09.1 · Identifier la variante : **tag entier** (option C) — ✅
+```go
+type EitherTag uint8
+
+const (                         // générées par le transpileur :
+	TagSuccess EitherTag = iota  // une constante par information
+	TagFail                      // rencontrée dans le programme
+	TagNegativeOperand
+	TagDivisionByZero
+)
+```
+- **Pourquoi** : c'est l'option la plus performante, ce que l'équipe cherche. La comparaison d'entier tient en une instruction, le tag ne pèse qu'un octet, et une faute de nom est détectée à la compilation.
+- Le **côté** (droite/gauche) et le **texte** de l'information ne sont pas stockés dans la valeur. On les retrouve à partir du tag avec deux tables générées : `isRightTag[tag]` et `informationName[tag]`.
+- Pour faciliter le débogage, `EitherTag` a une méthode `String()` qui affiche le nom.
+- **Écarté** :
+  - l'interface avec une struct par variante : allocations sur le tas et type switch dynamique ;
+  - l'information en chaîne (code de départ) : comparaisons de chaînes, 16 octets au lieu d'un.
+
+#### D-09.2 · Type de la valeur : **`Either[T]` par défaut, `Either2[R, L]` quand l'union l'exige** — ✅
+```go
+type Either[T any]     struct { Tag EitherTag; Value T }              // même type à droite et à gauche
+type Either2[R, L any] struct { Tag EitherTag; Right R; Left L }      // types différents
+```
+(Go ne permet pas deux types du même nom avec un nombre de paramètres différent, d'où `Either2`.)
+
+**Règle de choix**, appliquée par le transpileur avec le checker sur chaque union d'`Either` :
+1. On lit le type de valeur de chaque variante (`Success<X>`, `Left<"info", X>`, `Fail`).
+2. `Fail` (valeur `undefined`) est **compatible avec tout** : la valeur reste à zéro, et c'est le tag qui dit à `print` d'afficher `undefined`.
+3. Toutes les valeurs ont le même type → **`Either[T]`**.
+4. Toutes les droites ont un type R et toutes les gauches un type L, avec R ≠ L → **`Either2[R, L]`**.
+5. Sinon (deux gauches de types différents, par exemple) → erreur explicite du transformer `unsupported-either-mixed-value-types`. Aucun exercice n'a ce cas.
+
+**Où on en a besoin** (vérifié dans les types de DuploJS) :
+- projets 01 à 08 : `Either[float64]` (ou `Either[[]float64]` après `coalescing`) ;
+- projets **09 et 10** : `DEither.group` / `asyncGroup` renvoient `Success<number[]> | Left<…, number>`. Le succès est un tableau et l'erreur un nombre, donc **`Either2[[]float64, float64]`**.
+
+#### D-09.3 · Helpers : **fonctions génériques Go d'abord**, puis déroulé là où les mesures le justifient — ✅
+```go
+func IsRight[T any](r Either[T]) bool
+func WhenIsRight[T, U any](r Either[T], f func(T) U) Either[U]
+func WhenIsRightOtherwise[T, U any](r Either[T], f func(T) U, g func() U) U
+func RightPipe…, Group…, MatchInformation…
+```
+- **Pourquoi** :
+  - l'équipe découvre Go : chaque helper est écrit **une fois**, en Go normal, et testé à part ;
+  - le Go généré reste proche du TypeScript, donc facile à déboguer ;
+  - c'est la démarche du cours : « compiler correctement, puis spécialiser les cas coûteux et mesurer ».
+- **Coût accepté** : un appel de fonction et une closure possible. Le compilateur Go supprime souvent l'appel des petites fonctions de lui-même (inlining).
+- **Plus tard (étape 11)** : `go build -gcflags=-m` et `go test -bench`. On ne déroule à la compilation que ce que les mesures désignent, probablement `IsRight`.
+- Les helpers sont des **shared dependencies**, une par opération (voir le skill `typescript-to-go`).
+
+#### Comparatif qui a servi à décider
+
+| Question | Option | ✅ Points forts | ❌ Points faibles |
 |---|---|---|---|
-| Interface + une struct par variante | ❌ allocations sur le tas (boxing), type switch dynamique | faible | écartée |
-| Struct générique `Either[T]{ Information string; Value T }` | ✅ pas d'allocation, mais compare des chaînes | moyen | base |
-| Struct spécialisée par union + tag entier + helpers déroulés | ⭐ maximum | élevé | trop cher en entier |
+| 1 | A. Interface + une struct par variante | idiomatique, lisible | allocations sur le tas, test dynamique, beaucoup de types à générer |
+| 1 | B. Information en chaîne | déjà commencé, lisible en débogage | comparaisons de chaînes, 16 octets, fautes vues seulement à l'exécution |
+| 1 | **C. Tag entier** | **le plus rapide et compact, erreurs vues à la compilation** | constantes à générer, `String()` pour déboguer |
+| 2 | **`Either[T]`** | **compact, couvre 01 à 08** | ne gère pas des types différents |
+| 2 | **`Either2[R, L]`** | **couvre 09 et 10** | struct plus lourde, signatures plus longues |
+| 3 | **Fonctions génériques** | **simples à écrire et à tester, Go lisible** | appel et closure possibles (souvent supprimés par Go) |
+| 3 | Déroulé à la compilation | le plus rapide | dur à générer, à déboguer, et duplique le code |
 
-**Recommandation** :
-- Partir de la struct générique, mais avec un **tag entier** : les informations `"success"`, `"negative-operand"`… deviennent des constantes, converties en chaîne seulement dans `MarshalJSON` / `print`.
-- **Dérouler** les helpers les plus utilisés au lieu de les appeler :
-  - `isRight(r)` devient `r.Tag == ...` ;
-  - `whenIsRight(r, f)` devient un `if` ;
-  - `pipe` et `rightPipe` deviennent des appels en séquence.
-- **Garder le format JSON** des tags existants (`@duplojs/lang/kind/@DuplojsLangEither/...`), car la sortie de `print` sera probablement comparée à celle de DuploJS.
-- Le narrowing du checker (après `isRight`) permet de lire `Value` sans revérifier.
-- **Mesurer** : `go build -gcflags=-m` (repère les allocations sur le tas) et `go test -bench`.
-
-### D-10 · `pipe` / formes curryfiées — 🟡
-- Dérouler `DCommon.pipe(x, f, g)` en `t1 := f(x); t2 := g(t1)` à la compilation, plutôt que générer des helpers génériques variadiques.
-- Les formes curryfiées (`whenIsRight(fn)` sans données) ne sont traduites que dans un `pipe` ou un `map`, où l'argument est connu.
+### D-10 · `pipe` / formes curryfiées — ✅ (adapté à D-09.3)
+- `DCommon.pipe(x, f, g)` est **déroulé à la compilation** en `t1 := f(x)`, puis `t2 := g(t1)`. Ce n'est pas une optimisation : Go n'a pas de génériques variadiques, donc un `Pipe` générique est impossible sans écrire `Pipe2`, `Pipe3`… Le déroulé est ici le plus simple.
+- Les formes curryfiées (`DEither.whenIsRight(fn)` sans données) ne sont traduites que dans un `pipe` ou un `map`, où la donnée est connue. Elles deviennent un appel au helper générique avec cette donnée : `t2 := WhenIsRight(t1, fn)`.
 
 ### D-11 · Asynchrone (projet 10) — 🟡
 - Il n'y a aucune vraie entrée/sortie, donc une **exécution synchrone** (`Promise<T>` traduit en `T`) préserve l'ordre et le résultat.

@@ -150,7 +150,7 @@ func Sourced_add(Sourced_one float64, Sourced_two float64) (shard_dependencies.E
 **Problème posé** : un appel qui reçoit une fonction et ne l'applique qu'à la valeur `Right`.
 
 **Réponse prévue** :
-- dérouler en `if r.Tag == right { nouvelle = coalescing(r.Value) } else { nouvelle = r }` (D-09) ;
+- appel du helper générique `WhenIsRight(r, coalescing)` (D-09.3), qui applique `coalescing` seulement si `r` est une droite ;
 - `coalescing` devient une shared dependency générique.
 - Point à clarifier : le type de sortie, qui est l'union des deux branches.
 
@@ -166,7 +166,7 @@ func Sourced_add(Sourced_one float64, Sourced_two float64) (shard_dependencies.E
 
 **Problème posé** : une composition en pipe, avec une forme curryfiée.
 
-**Réponse prévue** : dérouler le pipe à la compilation (D-10). Chaque étape curryfiée reçoit la valeur de l'étape précédente comme premier argument, ce qui ramène au projet 02.
+**Réponse prévue** : dérouler le pipe à la compilation (D-10) : `t1 := result`, puis `t2 := WhenIsRight(t1, coalescing)`. Chaque étape curryfiée reçoit la valeur de l'étape précédente comme premier argument, ce qui ramène au projet 02.
 
 **Go visé** : _à remplir_
 
@@ -198,8 +198,8 @@ func Sourced_add(Sourced_one float64, Sourced_two float64) (shard_dependencies.E
 **Problèmes posés** : traiter différemment chaque issue ; transformer chaque élément d'une collection.
 
 **Réponse prévue** :
-- `whenIsRightOtherwise` est déroulé en `if` / `else` ;
-- la fonction fléchée devient un `func` littéral (ou elle est déroulée si son corps est simple) ;
+- `whenIsRightOtherwise` devient un appel au helper `WhenIsRightOtherwise(r, f, g)` (D-09.3) ;
+- la fonction fléchée `() => [-12]` devient un `func` littéral Go ;
 - `DArray.map` devient une boucle `for range` qui remplit un slice pré-alloué (`make([]T, 0, len(xs))`) ;
 - `DString.to` utilise un formatage fidèle à JS (D-12).
 
@@ -218,7 +218,7 @@ func Sourced_add(Sourced_one float64, Sourced_two float64) (shard_dependencies.E
 **Réponse prévue** :
 - l'information devient une constante de tag, avec sa valeur dans `Value` ;
 - le ternaire devient `var t T; if cond { t = a } else { t = b }`, placé dans `before` ;
-- `matchInformation` devient un `switch r.Tag { case ...: }`, et les handlers du littéral d'objet deviennent les branches.
+- `matchInformation` devient `MatchInformation(r, handlers)`, où `handlers` est un slice de fonctions rangé par numéro de tag : la fonction de `"negative-operand"` est rangée à l'indice `TagNegativeOperand`, etc. (D-09.3).
 
 **Go visé** : _à remplir_
 
@@ -233,7 +233,7 @@ func Sourced_add(Sourced_one float64, Sourced_two float64) (shard_dependencies.E
 **Problème posé** : enchaîner des opérations dépendantes et s'arrêter au premier échec.
 
 **Réponse prévue** :
-- dérouler en séquence de `if r.Tag est left { résultat = r (converti) } else { r2 := divide(r.Value, 0) ... }` ;
+- `rightPipe(r, f, g)` devient des appels emboîtés au helper à deux arguments `RightThen(RightThen(r, f), g)`. `RightThen` renvoie `r` tel quel si c'est une gauche, sinon `f(r.Value)` (D-09.3) ;
 - le type final est l'union de toutes les gauches et de la dernière droite.
 
 **Go visé** : _à remplir_
@@ -265,7 +265,8 @@ func Sourced_add(Sourced_one float64, Sourced_two float64) (shard_dependencies.E
 
 **Problème posé** : regrouper des résultats et échouer dès qu'un seul échoue.
 
-**Réponse prévue** : une boucle sur les résultats qui s'arrête au premier `left` et le renvoie ; sinon, on construit le slice des valeurs.
+**Réponse prévue** : le helper `Group(rs)` boucle sur les résultats, s'arrête au premier `left` et le renvoie ; sinon, il construit le slice des valeurs.
+- **Type de retour** : `Success<number[]> | Left<…, number>`. Le succès est un tableau et l'erreur un nombre, donc on utilise **`Either2[[]float64, float64]`** (D-09.2). C'est le premier projet qui en a besoin.
 - Point à clarifier : quelle gauche est renvoyée (la première ?). À vérifier dans la source de `@duplojs/lang`.
 
 **Go visé** : _à remplir_
