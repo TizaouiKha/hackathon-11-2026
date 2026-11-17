@@ -16,7 +16,7 @@ Chaque étape indique : **le but**, **ce qu'il faut avoir lu**, **ce qu'il faut 
 | 0 | [Installer l'environnement](#étape-0--installer-lenvironnement) | — | tout le monde | — |
 | 1 | [Projet 00 qui compile](#étape-1--projet-00-qui-compile) | — | Claude | ✅ |
 | 2 | [Script de vérification](#étape-2--script-de-vérification) | — | Claude | ✅ |
-| 3 | [Représentation des `Either` en Go](#étape-3--représentation-des-either-en-go) | — | | ⬜ |
+| 3 | [Représentation des `Either` en Go](#étape-3--représentation-des-either-en-go) | — | Claude | ✅ (branche `etape-3-either`) |
 | 4 | [`print` fidèle à Node (`util.inspect`)](#étape-4--print-fidèle-à-node) | — | | ⬜ |
 | 5 | [Helper de préparation](#étape-5--helper-de-préparation) | — | | ⬜ |
 | 6 | [Transformers de base du langage](#étape-6--transformers-de-base-du-langage) | 5 | | ⬜ |
@@ -105,6 +105,25 @@ C'est **l'outil de validation de toutes les étapes**. Si les sorties diffèrent
 ---
 
 ## Étape 3 — Représentation des `Either` en Go
+
+> ✅ **Fait** sur la branche `etape-3-either`. Résumé de ce qui existe maintenant, pour les étapes 4 et 7 :
+> - **Code** : `src/transpiler/transformers/duplojs/either/core/` :
+>   - `sharedDependency.ts` : `EitherTag`, les tables, `Either[T]`, `Either2[R, L]` ;
+>   - `tag.ts` : `registerEitherTag(context, side, information)` renvoie la constante `shard_dependencies.TagLeftXxx` ;
+>   - `type.ts` : la règle `Either` / `Either2` ;
+>   - `construct.ts` : `constructEither(...)` construit un littéral de struct du **type cible** (le type de retour de la fonction englobante, sinon le type contextuel, sinon le type propre de l'appel).
+> - **Handlers** : `success/`, `fail/`, `left/` dans `either/`.
+> - **Côté Go**, depuis un autre package :
+>   - `r.Tag.IsRight()` renvoie un `bool` ;
+>   - `r.Tag.Information()` renvoie le texte (par exemple `"negative-operand"`), utile pour `print` (étape 4) ;
+>   - `r.Value` pour `Either`, `r.Right` / `r.Left` pour `Either2`.
+> - **Vérifié** :
+>   - `check.sh 00` ✓ ;
+>   - un projet de test avec un `fail` dans une union explicite, un `left` inféré, un littéral `0` élargi en `float64`, et un `Either2` : le Go compile ;
+>   - lint et types OK.
+> - **Pas encore vérifiable** : le `add` du projet 04 a besoin du transformer `if` (étape 6), et `Success<number[]>` (projet 09) a besoin des types tableau (étape 6).
+>
+> Le reste de cette section décrit ce qui a été demandé.
 
 **But** : mettre en place en Go la représentation des `Either` **décidée en équipe** (D-09, ✅) : tag entier, `Either[T]` ou `Either2[R, L]`. C'est la fondation des projets 01 à 10.
 

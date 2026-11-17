@@ -4,7 +4,11 @@ import { createTransformer, type Transformer } from "@transformer";
 import type { GoAST } from "@go";
 import { TsAST } from "@typescript";
 import * as DPattern from "@duplojs/lang/pattern";
-import { successExpressionHandler, successTypeHandler } from "./success";
+import * as DArray from "@duplojs/lang/array";
+import { successExpressionHandler } from "./success";
+import { failExpressionHandler } from "./fail";
+import { leftExpressionHandler } from "./left";
+import { eitherTypeHandler, isEitherMemberCandidate, resolveEitherTypeName, unwrapParenthesizedType } from "./core/type";
 
 export const duploJSEitherDeclarationTransformer: Transformer<GoAST.Declaration> = createTransformer(
 	(_node, context) => context.notSupport(),
@@ -36,10 +40,15 @@ export const duploJSEitherExpressionTransformer: Transformer<GoAST.Expression> =
 			moduleReference.symbol.name,
 			DPattern.match(
 				DCommon.equal("success"),
-				() => successExpressionHandler(
-					node,
-					context,
-				),
+				() => successExpressionHandler(node, context),
+			),
+			DPattern.match(
+				DCommon.equal("fail"),
+				() => failExpressionHandler(node, context),
+			),
+			DPattern.match(
+				DCommon.equal("left"),
+				() => leftExpressionHandler(node, context),
 			),
 			DPattern.otherwise(
 				() => context.error(node),
@@ -48,32 +57,38 @@ export const duploJSEitherExpressionTransformer: Transformer<GoAST.Expression> =
 	},
 );
 
+const eitherTypeNames: readonly string[] = ["Success", "Fail", "Left", "Right"];
+
+/**
+ * Types Either : un membre seul (`Success<number>`) ou une union dont tous les
+ * membres sont des types Either (`Fail | Success<number>`), parenthèses comprises.
+ */
 export const duploJSEitherTypeTransformer: Transformer<GoAST.GenericTypeReference> = createTransformer(
 	async(node, context) => {
-		if (!TsAST.isTypeReferenceNode(node) && !TsAST.isImportTypeNode(node)) {
+		if (!TsAST.isTypeNode(node)) {
 			return context.notSupport();
 		}
 
-		const reference = TsAST.isTypeReferenceNode(node) ? node.typeName : node;
+		const unwrapped = unwrapParenthesizedType(node);
+		const candidates = TsAST.isUnionTypeNode(unwrapped)
+			? unwrapped.types
+			: [unwrapped];
+		const members = DArray.filter(candidates, isEitherMemberCandidate);
 
-		const moduleReference = await DCommon.asyncPipe(
-			context.resolveReferenceModule(reference, "@duplojs/lang", /^dist\/either\//),
-			DEither.unwrapRight,
-		);
-
-		if (DEither.isLeft(moduleReference)) {
+		if (members.length !== candidates.length) {
 			return context.notSupport();
 		}
 
-		return DCommon.pipe(
-			moduleReference.symbol.name,
-			DPattern.match(
-				DCommon.equal("Success"),
-				() => successTypeHandler(node, context),
-			),
-			DPattern.otherwise(
-				() => context.notSupport(),
-			),
+		const names = await DCommon.asyncPipe(
+			members,
+			DArray.map((member) => resolveEitherTypeName(member, context)),
+			DCommon.promiseAll,
 		);
+
+		if (!DArray.every(names, (name) => name !== undefined && DArray.includes(eitherTypeNames, name))) {
+			return context.notSupport();
+		}
+
+		return eitherTypeHandler(unwrapped, members, context);
 	},
 );
