@@ -17,12 +17,54 @@ export async function successExpressionHandler(
 		return context.transform(node, [callExpressionTransformer]);
 	}
 
+	// `EitherSuccessOf` est générique : Go ne peut pas l'affecter à une variable
+	// sans instanciation. Le type est lu sur l'appel (`Success<T>`) via le checker.
+	const call = node.parent;
+
+	if (
+		!call
+		|| !TsAST.isCallExpression(call)
+		|| call.expression.pos !== node.pos
+		|| call.expression.end !== node.end
+	) {
+		return context.error(node, "success-reference-outside-call");
+	}
+
+	const { typeChecker } = context.transpilation;
+	const callTypeNode = await typeChecker.typeToTypeNode(
+		await typeChecker.getTypeAtLocation(call),
+		call,
+	);
+
+	if (
+		!callTypeNode
+		|| (!TsAST.isTypeReferenceNode(callTypeNode) && !TsAST.isImportTypeNode(callTypeNode))
+	) {
+		return context.error(call, "unresolved-success-call-type");
+	}
+
+	const successType = await DCommon.asyncPipe(
+		successTypeHandler(callTypeNode, context),
+		DEither.keepAsRightByInformation("transformation-success"),
+		DEither.unwrapRight,
+	);
+
+	if (DEither.isLeft(successType)) {
+		return DEither.hasInformation(successType, "transformation-not-supported")
+			? context.error(call, "unsupported-success-call-type")
+			: successType;
+	}
+
 	const packageName = context.registerSharedDependency(eitherSuccessDependency.value);
 
 	return context.success({
-		result: GoAST.createSelectorExpression({
-			target: packageName,
-			identifier: successFunctionIdentifier,
+		before: successType.before,
+		result: GoAST.createInstantiationExpression({
+			target: GoAST.createSelectorExpression({
+				target: packageName,
+				identifier: successFunctionIdentifier,
+			}),
+			typeArguments: successType.result.typeArguments,
 		}),
 	});
 }

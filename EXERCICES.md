@@ -7,7 +7,7 @@ Les décisions transverses sont dans [DECISIONS.md](DECISIONS.md) (références 
 
 | Projet | Sujet principal | État |
 |---|---|---|
-| [00](#projet-00) | Addition, appel de `DEither.success`, préparation d'un appel | 🟨 build OK, `go build` KO (B-01) |
+| [00](#projet-00) | Addition, appel de `DEither.success`, préparation d'un appel | ✅ |
 | [01](#projet-01) | Union `Success \| Fail`, `if`, `isRight`, `print` | ⬜ |
 | [02](#projet-02) | `whenIsRight` + fonction passée en argument | ⬜ |
 | [03](#projet-03) | `pipe` + forme curryfiée | ⬜ |
@@ -19,12 +19,47 @@ Les décisions transverses sont dans [DECISIONS.md](DECISIONS.md) (références 
 | [09](#projet-09) | `group` (transaction) | ⬜ |
 | [10](#projet-10) | `async` / `await`, `rightAsyncPipe`, `asyncGroup`, `asyncPipe` | ⬜ |
 
-Commande (sous WSL, voir D-01) :
+**Valider un projet** (sous WSL, voir D-01 et D-14) :
 ```bash
-pnpm build --tsconfig projects/NN/tsconfig.json --input projects/NN/index.ts --output projects/NN/dist
-cd projects/NN/dist && go build -o /tmp/pNN . && /tmp/pNN
+./.commands/check.sh NN
 ```
-Pour obtenir la sortie de référence côté TypeScript, on peut lancer `pnpm exec tsx projects/NN/index.ts`.
+Ce script transpile, compile et exécute le Go, puis compare sa sortie à celle du TypeScript.
+
+## Sorties de référence (ce que le Go doit afficher)
+
+Ces sorties ont été obtenues en exécutant chaque `index.ts` avec `tsx`. `print` utilise le format `util.inspect` de Node (D-13).
+
+| Projet | Sortie attendue |
+|---|---|
+| 00 | _(rien)_ |
+| 01 | l'objet Success ci-dessous |
+| 02, 03 | l'objet Success ci-dessous, puis `[ 3 ]` |
+| 04 | l'objet Fail ci-dessous, une seule fois : `isRight` est faux, et `whenIsRight` laisse passer le fail tel quel, puis `print(newResult)` l'affiche |
+| 05 | l'objet Success, puis `[ '3' ]` |
+| 06 | `[ '-12' ]`, puis `un opérande est négatif` |
+| 07 | `[ '-12' ]`, puis `division par zéro impossible` |
+| 08 | `[ '3', '3', 'échec' ]` |
+| 09 | `[ 'transaction annulée' ]` |
+| 10 | `[ 'transaction annulée' ]` |
+
+Objet Success :
+```
+{
+  '@duplojs/lang/kind/@DuplojsLangEither/right': null,
+  '@duplojs/lang/kind/@DuplojsLangEither/information': 'success',
+  '@duplojs/lang/kind/@DuplojsLangEither/value': 3,
+  '@duplojs/lang/kind/@DuplojsLangEither/success': null
+}
+```
+Objet Fail (projet 04) :
+```
+{
+  '@duplojs/lang/kind/@DuplojsLangEither/left': null,
+  '@duplojs/lang/kind/@DuplojsLangEither/information': 'fail',
+  '@duplojs/lang/kind/@DuplojsLangEither/value': undefined,
+  '@duplojs/lang/kind/@DuplojsLangEither/fail': null
+}
+```
 
 ---
 
@@ -70,10 +105,10 @@ Pour obtenir la sortie de référence côté TypeScript, on peut lancer `pnpm ex
 - `DEither.success` devient la shared dependency `EitherSuccessOf[T]`, qui renvoie `EitherSuccess[T]` ;
 - l'appel au niveau du module part dans `init()`, et `main.go` importe le package d'entrée avec `_`.
 
-**Go actuellement généré** (`add.ts.go`) :
+**Go généré** (`add.ts.go`), après la correction de B-01 :
 ```go
 func Sourced_add(Sourced_one float64, Sourced_two float64) (shard_dependencies.EitherSuccess[float64]) {
-	Generated_4 := shard_dependencies.EitherSuccessOf      // ❌ manque [float64]
+	Generated_4 := shard_dependencies.EitherSuccessOf[float64]
 	Generated_5 := Sourced_one
 	Generated_6 := Sourced_two
 	Generated_7 := Generated_5 + Generated_6
@@ -81,11 +116,11 @@ func Sourced_add(Sourced_one float64, Sourced_two float64) (shard_dependencies.E
 }
 ```
 
-**Reste à faire** :
-- [ ] corriger B-01 : générer `shard_dependencies.EitherSuccessOf[float64]` ;
-- [ ] (optionnel, D-06) ne plus préparer les identifiants ou littéraux.
+**Fait / reste à faire** :
+- [x] corriger B-01 : générer `shard_dependencies.EitherSuccessOf[float64]` (type lu sur l'appel via le checker) ;
+- [ ] (étape 5, D-06) ne plus préparer les identifiants ou littéraux.
 
-**État** : 🟨 le build TS passe, `go build` échoue.
+**État** : ✅ `./.commands/check.sh 00` passe (compile, s'exécute, sortie identique : rien).
 
 ---
 

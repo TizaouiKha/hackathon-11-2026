@@ -89,14 +89,37 @@ Options étudiées, de la moins à la plus performante :
 - `DString.to(3)` doit donner `"3"` comme en JS, pas `"3.000000"`.
 - Prévoir une shared dependency fidèle au formatage JS : `strconv.FormatFloat(f, 'f', -1, 64)` couvre les cas courants, à vérifier sur les exposants et `NaN`.
 
+### D-13 · `print` = format `util.inspect` de Node, pas du JSON — ✅ (constat, 17/11/2026)
+- `DCommon.print(x)` appelle `console.info(x)` (source : `@duplojs/lang/dist/common/print.mjs`). Node formate donc avec `util.inspect`.
+- Conséquences pour la sortie Go :
+  - guillemets **simples** dans les objets et tableaux ;
+  - une chaîne affichée seule est écrite sans guillemets ;
+  - `undefined` est affiché ;
+  - un objet passe sur plusieurs lignes au-delà de 80 caractères ;
+  - les tableaux s'écrivent `[ 3 ]`.
+- `json.Marshal` **ne suffit pas**. Il faut un `Inspect` en Go (par réflexion, avec les noms de clés pris dans les tags de struct). C'est l'étape 4 de [ETAPES.md](ETAPES.md).
+- Les sorties de référence de chaque projet sont dans [EXERCICES.md](EXERCICES.md).
+
+### D-14 · Validation par comparaison automatique avec TypeScript — ✅
+- `./.commands/check.sh NN` (ou `pnpm check NN`) transpile, compile, exécute le Go et le TS, puis fait un `diff` des sorties.
+- Une étape ou un exercice est validé seulement si ce script affiche ✓.
+
+### D-15 · Organisation du travail — ✅
+- Les étapes, leurs dépendances et la répartition sont dans [ETAPES.md](ETAPES.md). Chacun s'inscrit sur une étape avant de la commencer.
+
 ---
 
 ## Bugs connus du code de départ
 
-### B-01 · `EitherSuccessOf` utilisé sans instanciation — ouvert
+### B-01 · `EitherSuccessOf` utilisé sans instanciation — ✅ corrigé (17/11/2026)
 - `go build` du projet 00 : `cannot use generic function shard_dependencies.EitherSuccessOf without instantiation`.
-- Le Go généré contient `Generated_4 := shard_dependencies.EitherSuccessOf` alors qu'il faut `EitherSuccessOf[float64]`, comme dans le README du projet 00.
-- Correction : dans `successExpressionHandler`, instancier avec le type de l'argument (via le checker), avec `GoAST.createInstantiationExpression`.
+- Le Go généré contenait `Generated_4 := shard_dependencies.EitherSuccessOf` alors qu'il faut `EitherSuccessOf[float64]`, comme dans le README du projet 00.
+- **Correction** (`duplojs/either/success/index.ts`) :
+  - on lit le type de l'**appel** avec le checker : `getTypeAtLocation(call)`, puis `typeToTypeNode`, ce qui donne `Success<number>` ;
+  - on le passe à `successTypeHandler` pour obtenir `EitherSuccess[float64]` ;
+  - on reprend ses `typeArguments` dans un `GoAST.createInstantiationExpression`.
+- **Limite connue** : `success` utilisée comme valeur, hors d'un appel (`f(DEither.success)`), renvoie une erreur `success-reference-outside-call`. Ce n'est pas utilisé dans les exercices.
+- **À surveiller** : `success<const T>` donne `Success<1>` pour `success(1)`. Il faudra élargir les types littéraux (étape 3 de [ETAPES.md](ETAPES.md)).
 
 ### B-02 · Noms de package illisibles — mineur
 - Le nom du package est tiré du chemin absolu : `Sourced_001bmnt001bc001bUsers...`. C'est valide mais illisible, et la valeur change selon la machine.
