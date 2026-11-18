@@ -312,9 +312,28 @@ Les remarques de relecture des PR, pour ne pas les perdre. Statuts : 🔴 à cor
 
 **Remarque sur l'ordre d'évaluation (n° 2)** : le problème reste réel, mais il est **impossible à déclencher aujourd'hui**. Sans affectation, aucun argument ne peut modifier une variable lue avant lui. À corriger en même temps que les affectations (étape 6).
 
-**Nouveaux points pour plus tard** (sans lien avec l'étape 5, aucun exercice concerné) :
-- 🟡 **`numericLiteral.ts`** : traduire un littéral qui vaut `Infinity` (`1e400`) en `math.Inf(1)`, ou le refuser avec une erreur claire.
-- 🟡 **`binary.ts`** : `%` doit devenir `math.Mod(a, b)`. `<<`, `>>`, `&`, `|` et `^` doivent passer par une conversion en entier 32 bits, comme JavaScript, ou être refusés explicitement plutôt que de produire du Go qui ne compile pas.
+**Nouveaux points** (sans lien avec l'étape 5, aucun exercice concerné) :
+- ✅ **`numericLiteral.ts`** : traduire un littéral qui vaut `Infinity` (`1e400`) en `math.Inf(1)`.
+- ✅ **`binary.ts`** : `%` doit devenir `math.Mod(a, b)`. `<<`, `>>`, `&`, `|` et `^` doivent passer par une conversion en entier 32 bits, comme JavaScript.
+
+#### Correction des 4 bugs (18/11/2026, commit `21a51b0` sur `etape-5-helper-preparation`)
+Les 4 échecs de la revue adversariale sont corrigés **sur la branche de l'étape 5**. C'est là que `binary.ts` a été réécrit, ce qui évite les conflits.
+
+| Bug | Correction | Fichier |
+|---|---|---|
+| `1e400` donne `undefined: Infinity` | un littéral qui vaut `Infinity` devient `math.Inf(1)` (avec `import "math"` dans le fichier) | `expression/numericLiteral.ts` |
+| `x % y` ne compile pas | `math.Mod(x, y)` : même règle de signe (celui du dividende) et de `NaN` que JavaScript | `expression/binary.ts` |
+| `&`, `\|`, `^`, `<<`, `>>`, `>>>` ne compilent pas | helpers partagés `JSBitwiseAnd`, `JSBitwiseOr`, `JSBitwiseXor`, `JSLeftShift`, `JSSignedRightShift`, `JSUnsignedRightShift` qui appliquent **ToInt32 / ToUint32** comme JavaScript (troncature, modulo 2³², `NaN` et `Infinity` donnent 0, décalage `& 31`) | `expression/javascriptNumber.ts` |
+| `x \|\| y` entre nombres | renvoie **la valeur** d'un opérande comme JavaScript (`0 \|\| 5` donne `5`, `NaN && 5` donne `NaN`) ; le membre droit n'est évalué que si nécessaire. Entre booléens, rien ne change. Avec des types mélangés (`boolean \|\| number`), le refus est explicite, car aucun type Go ne représente `number \| true` | `expression/binary.ts` |
+
+**Bonus trouvé en corrigeant** : si deux helpers partagés importaient le même paquet (`math` pour `JSNumberToString` et pour les opérateurs sur les bits), le fichier `shard_dependencies.go` contenait l'import **deux fois** et ne compilait pas. Les imports sont maintenant dédupliqués dans `build.ts`.
+
+**Vérifié** :
+- `tests/js-operators/` : **56 contrôles bit pour bit** contre les valeurs de Node, par exemple `-0 % 5` donne `-0`, `1e21 \| 0` donne `-559939584`, `1 << 33` donne `2`, `-1 >>> 0` donne `4294967295`, et `NaN && 5` donne `NaN` ;
+- sur la branche de l'étape 5 : tous les tests, `check 00`, les types et le lint (0 avertissement) ;
+- **intégration** (branche locale « étape 5 + `main` + `DString.to` ») : les 7 tests d'exécution passent, et un programme qui utilise `DString.to`, `|` et `%` ensemble compile avec un seul `import "math"`.
+
+La remarque 4 est donc traitée : `&&` / `||` entre nombres renvoient bien une valeur. Les remarques 2 (ordre d'évaluation) et 3 (contrat `DEither`) restent 🟡 pour plus tard.
 
 ---
 
