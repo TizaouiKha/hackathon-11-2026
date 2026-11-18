@@ -62,11 +62,20 @@ export async function transformTypeOfNode(node: TsAST.Node, context: BuildContex
 
 /** Lit la forme Either du type d'une expression ; erreur si ce n'est pas une union d'Either. */
 export async function analyzeEitherOfNode(node: TsAST.Node, context: BuildContext) {
-	const { typeChecker } = context.transpilation;
-	const typeNode = await typeChecker.typeToTypeNode(
-		await typeChecker.getTypeAtLocation(node),
+	return analyzeEitherOfType(
+		await context.transpilation.typeChecker.getTypeAtLocation(node),
 		node,
+		context,
 	);
+}
+
+/**
+ * Lit la forme Either d'un type TS. `node` sert de contexte au checker et aux
+ * messages d'erreur (utile quand le type ne vient pas d'une expression, par
+ * exemple le paramètre d'une forme curryfiée).
+ */
+export async function analyzeEitherOfType(type: Type, node: TsAST.Node, context: BuildContext) {
+	const typeNode = await context.transpilation.typeChecker.typeToTypeNode(type, node);
 
 	if (!typeNode) {
 		return context.error(node, "untranslatable-type");

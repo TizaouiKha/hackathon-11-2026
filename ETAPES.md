@@ -21,7 +21,7 @@ Chaque étape indique : **le but**, **ce qu'il faut avoir lu**, **ce qu'il faut 
 | 5 | [Helper de préparation](#étape-5--helper-de-préparation) | — | | ⬜ |
 | 6 | [Transformers de base du langage](#étape-6--transformers-de-base-du-langage) | 5 | | ⬜ |
 | 7 | [Domaine Either (handlers)](#étape-7--domaine-either) | 3, 5 | Claude | 🟨 presque fini (branche `etape-7-either-helpers`) : il reste `group` (attend les types tableau, étape 6) |
-| 8 | [Domaines Common / Array / String](#étape-8--domaines-common--array--string) | 4, 5 | | ⬜ |
+| 8 | [Domaines Common / Array / String](#étape-8--domaines-common--array--string) | 4, 5 | Claude (8a) | 🟨 8a fait (branche `etape-8a-pipe`) : `pipe` et formes curryfiées. 8b (`print`, `map`, `coalescing`, `DString.to`) attend les étapes 4 et 6 |
 | 9 | [Valider les projets 01 → 09](#étape-9--valider-les-projets-01--09) | 6, 7, 8 | tout le monde | ⬜ |
 | 10 | [Projet 10 (asynchrone)](#étape-10--projet-10-asynchrone) | 9 | | ⬜ |
 | 11 | [Performance et finitions](#étape-11--performance-et-finitions) | 9 | | ⬜ |
@@ -278,7 +278,7 @@ Les règles à reproduire :
 > | `rightPipe(r, f, g…)` | ✅ si chaque étape renvoie le même type d'Either | `RightThen(RightThen(r, f), g)` |
 > | `whenIsRight(r, f)` | ✅ (D-16, `TagValue`) | `WhenIsRight(r, f, wrapValue, wrapLeft)` : la valeur brute est rangée avec `TagValue` |
 > | `group([…])` | ⬜ attend les types tableau (étape 6) | `Group(rs)`, qui renvoie `Either2[[]T, T]` |
-> | formes sans données (`whenIsRight(fn)` dans un `pipe`) | ⬜ étape 8 | |
+> | formes sans données (`whenIsRight(fn)`, `whenIsRightOtherwise(f, g)`, `matchInformation({…})`) | ✅ (étape 8a, D-17) | une fonction Go littérale qui appelle le helper |
 >
 > - **Callbacks** (`either/core/callback.ts`) : un callback TS qui déclare **moins** de paramètres que ce qu'il reçoit (`() => "échec"`) est enveloppé dans `func(_ T) U { return f() }`, car Go exige la signature exacte. Un callback qui déclare un paramètre plus précis que celui reçu n'est pas encore géré.
 > - **Ajout lié à l'étape 6** : le type `boolean` devient `bool` (`type/bool.ts`), nécessaire pour renvoyer le résultat de `isRight`.
@@ -316,6 +316,19 @@ Chaque fonction devient un **helper Go générique écrit une fois à la main** 
 ---
 
 ## Étape 8 — Domaines Common / Array / String
+
+> 🟨 **Découpée en deux.**
+>
+> **8a — fait** (branche `etape-8a-pipe`, sans dépendre des étapes 4 et 6) :
+> - **`DCommon.pipe`** est déroulé à la compilation (D-10) ;
+> - les **formes curryfiées** `DEither.whenIsRight(f)`, `whenIsRightOtherwise(f, g)` et `matchInformation({…})` deviennent des fonctions Go (D-17) ;
+> - **le routeur `duplojs/common/`** est créé. ⚠️ **Pour la personne de l'étape 4** : `print` doit s'y brancher. Il suffit d'ajouter un `DPattern.match(DCommon.equal("print"), …)` dans `src/transpiler/transformers/duplojs/common/index.ts` et le handler dans `common/print/`. Ne pas créer un second routeur ;
+> - **vérifié** : `tests/pipe/` (15 contrôles, valeurs calculées avec le vrai DuploJS), et tous les autres tests.
+>
+> **8b — à faire** quand les étapes 4 et 6 seront mergées :
+> - `DCommon.print` : brancher le `Inspect` de l'étape 4 ;
+> - `DArray.map` et `DArray.coalescing` : ils ont besoin des types tableau (`number[]`) et des fonctions fléchées (étape 6). La forme curryfiée de `map` suivra le modèle de D-17 (`either/core/operand.ts`) ;
+> - `DString.to` : il a besoin du type `string` (étape 6).
 
 **But** : traduire `pipe`, `print`, `DArray.map`, `DArray.coalescing` et `DString.to`.
 
