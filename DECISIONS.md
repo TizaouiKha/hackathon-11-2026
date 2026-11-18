@@ -257,6 +257,37 @@ func(input shard_dependencies.Either[float64]) shard_dependencies.Either[float64
 
 ### D-15 · Organisation du travail — ✅
 - Les étapes, leurs dépendances et la répartition sont dans [ETAPES.md](ETAPES.md). Chacun s'inscrit sur une étape avant de la commencer.
+- **Les PR s'ouvrent sur le fork, jamais sur le dépôt `duplojs`** (ajout du 18/11/2026). Sur un fork, `gh pr create` vise par défaut le dépôt **d'origine**, celui des organisateurs. Il faut toujours préciser le dépôt :
+  ```bash
+  gh pr create --repo TizaouiKha/hackathon-11-2026 --base main --head <ma-branche>
+  ```
+
+---
+
+## Revues de code
+
+Les remarques de relecture des PR, pour ne pas les perdre. Statuts : 🔴 à corriger avant le merge · 🟡 à traiter plus tard · ✅ traité.
+
+### R-01 · Étape 5 — helper de préparation (Yacine, branche `etape-5-helper-preparation`) — relue le 18/11/2026
+**Verdict : bon travail, à merger** une fois la PR déplacée sur le fork.
+
+**Ce qui a été vérifié** (sur une branche locale qui réunit l'étape 5 et le `main` du 18/11, rien n'a été poussé) :
+- le merge avec `main` (étapes 3, 7 et 8a) se fait **sans conflit**, alors que la branche part d'avant l'étape 8a ;
+- **tous les tests passent** : `tests/preparation/` (le sien), `tests/either/`, `tests/either-helpers/`, `tests/pipe/`, `check.sh 00`, `test:types`, et `test:lint` sans avertissement ;
+- le Go généré est plus lisible : `Value: Sourced_one + Sourced_two`, sans les 2 variables temporaires d'avant ;
+- `&&` et `||` n'évaluent leur partie droite que si nécessaire. Le test le prouve avec un tag invalide qui planterait sinon ;
+- `x / 0` passe par une variable, parce que Go refuse de compiler une division par la constante 0 ;
+- **contrôle ajouté pendant la revue** : les opérations entre deux littéraux sont maintenant calculées par Go **à la compilation** (`float64(0.1) + float64(0.2)`). Le résultat est identique à JavaScript sur 6 cas : `0.1 + 0.2`, `0.1 * 3`, `1 / 3`, `0.7 + 0.1`, `1e16 + 1`, `5e-324 / 2`. Pas de différence de calcul.
+
+**Remarques :**
+1. 🔴 **PR ouverte sur le mauvais dépôt** : elle est sur [duplojs/hackathon-11-2026#5](https://github.com/duplojs/hackathon-11-2026/pull/5), le dépôt des organisateurs. Il faut la fermer et la rouvrir sur le fork (commande dans D-15). Sinon, elle ne peut pas être mergée dans notre `main`.
+2. 🟡 **Ordre d'évaluation avec les variables.** `transformPrepared` ne copie plus les identifiants dans une variable temporaire. Si un argument **suivant** modifie la variable, Go lira la nouvelle valeur alors que JavaScript lit l'ancienne :
+   ```ts
+   f(x, change())   // change() modifie x : TS passe l'ancien x, le Go généré le nouveau
+   ```
+   Ce n'est **pas possible aujourd'hui** : aucun transformer ne traduit encore d'affectation, et aucun exercice ne modifie de variable. Ça le deviendra avec les affectations de l'étape 6. **Correction proposée** : quand un opérand suivant a des instructions de préparation (`before` non vide), copier dans une variable les identifiants déjà préparés avant lui. C'est la règle du skill `typescript-to-go` : « conserver la valeur de chaque expression dans une déclaration locale avant de poursuivre l'évaluation suivante ».
+3. 🟡 **Cohérence du contrat.** `transformPrepared` renvoie un objet simple `{ before, operand }` en cas de succès, alors que le reste du transpileur renvoie des résultats `DEither` (`context.success(...)`, `DEither.isLeft`). Ça fonctionne, mais un `DEither.right("prepared-operand", { before, operand })` serait plus cohérent avec D-04. Ce n'est pas bloquant.
+4. 🟡 **À garder en tête pour l'étape 6** : `&&` et `||` sont traduits avec un résultat `bool`. En JavaScript, `a || b` renvoie **la valeur** de `a` ou de `b` (par exemple `0 || 5` vaut `5`). Les exercices n'utilisent `||` qu'entre des booléens (`one < 0 || two < 0`), donc c'est sans effet pour l'instant.
 
 ---
 
