@@ -58,6 +58,35 @@ func main() {
 	failThrough := helpers.Sourced_pipeHalveTwice(fail)
 	expect("rightPipe(fail, …): fail inchangé", failThrough.Tag.Information(), "fail")
 
+	// whenIsRight (D-16)
+	doubled := helpers.Sourced_whenRightDouble(success)
+	expect("whenIsRight(success): TagValue", doubled.Tag.Information(), "value")
+	expect("whenIsRight(success): IsRight faux", doubled.Tag.IsRight(), false)
+	expect("whenIsRight(success): valeur brute", doubled.Value, 20)
+
+	leftKept := helpers.Sourced_whenRightDouble(negative)
+	expect("whenIsRight(left): erreur inchangée", leftKept.Tag.Information(), "negative-operand")
+	expect("whenIsRight(left): valeur inchangée", leftKept.Value, -3)
+
+	failKept := helpers.Sourced_whenRightDouble(fail)
+	expect("whenIsRight(fail): fail inchangé", failKept.Tag.Information(), "fail")
+
+	big := helpers.Sourced_whenRightIsBig(success)
+	expect("whenIsRight Either2 (succès): TagValue", big.Tag.Information(), "value")
+	expect("whenIsRight Either2 (succès): Right", big.Right, true)
+
+	bigLeft := helpers.Sourced_whenRightIsBig(negative)
+	expect("whenIsRight Either2 (left): Left", bigLeft.Left, -3)
+	expect("whenIsRight Either2 (left): tag", bigLeft.Tag.Information(), "negative-operand")
+
+	failOnly := helpers.Sourced_whenRightIsBigFailOnly(helpers.Sourced_successOrFail(3))
+	expect("whenIsRight fail seul (succès): Value", failOnly.Value, false)
+	expect("whenIsRight fail seul (succès): tag", failOnly.Tag.Information(), "value")
+	failOnlyFail := helpers.Sourced_whenRightIsBigFailOnly(helpers.Sourced_onlyFail())
+	expect("whenIsRight fail seul (fail): tag", failOnlyFail.Tag.Information(), "fail")
+
+	expect("isRight(valeur brute) faux", helpers.Sourced_isRightOfRaw(success), false)
+
 	if failures > 0 {
 		fmt.Printf("\n%d échec(s)\n", failures)
 		os.Exit(1)

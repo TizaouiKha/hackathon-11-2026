@@ -11,7 +11,15 @@ import {
 	eitherTagTypeIdentifier,
 } from "./sharedDependency";
 
-export type EitherSide = "right" | "left";
+/**
+ * `value` : tag réservé `TagValue` (D-16). Il marque une valeur brute rangée
+ * dans un Either, par exemple le résultat de `whenIsRight` (`number[] | Fail`).
+ * `TagValue.IsRight()` vaut `false`, comme `DEither.isRight([3])`.
+ */
+export type EitherSide = "right" | "left" | "value";
+
+/** Information associée au tag réservé `TagValue`. */
+export const valueInformation = "value";
 
 interface RegisteredTag {
 	readonly identifier: GoAST.Identifier;
@@ -40,6 +48,10 @@ function createTagName(
 	information: string,
 	registry: Map<string, RegisteredTag>,
 ) {
+	if (side === "value") {
+		return "TagValue";
+	}
+
 	const words = DCommon.pipe(
 		information,
 		DString.split(/[^a-zA-Z0-9]+/),

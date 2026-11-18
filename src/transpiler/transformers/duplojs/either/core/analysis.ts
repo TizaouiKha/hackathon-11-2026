@@ -2,14 +2,13 @@ import * as DArray from "@duplojs/lang/array";
 import * as DCommon from "@duplojs/lang/common";
 import * as DEither from "@duplojs/lang/either";
 import type { GoAST } from "@go";
-import { TsAST } from "@typescript";
+import type { TsAST } from "@typescript";
 import type { Type } from "typescript/async";
 import type { BuildContext } from "../../../../context/build";
 import { typeTransformers } from "../../../type";
 import {
 	createEitherGoType,
-	isEitherMemberCandidate,
-	resolveEitherVariant,
+	resolveUnionVariants,
 	unwrapParenthesizedType,
 	type EitherGoValueType,
 	type EitherVariant,
@@ -73,30 +72,9 @@ export async function analyzeEitherOfNode(node: TsAST.Node, context: BuildContex
 		return context.error(node, "untranslatable-type");
 	}
 
-	const unwrapped = unwrapParenthesizedType(typeNode);
-	const candidates = TsAST.isUnionTypeNode(unwrapped)
-		? unwrapped.types
-		: [unwrapped];
-	const members = DArray.filter(candidates, isEitherMemberCandidate);
-
-	if (members.length !== candidates.length) {
-		return context.error(node, "expected-either-value");
-	}
-
 	const variants = await DCommon.asyncPipe(
-		members,
-		DArray.map((member) => resolveEitherVariant(member, context)),
-		DCommon.promiseAll,
-		DArray.reduce(
-			DArray.reduceFrom<readonly EitherVariant[]>([]),
-			({ element, lastValue, next, exit }) => {
-				if (DEither.isLeft(element)) {
-					return exit(element);
-				}
-
-				return next(DArray.push(lastValue, DEither.unwrapRight(element)));
-			},
-		),
+		resolveUnionVariants(typeNode, context),
+		DEither.unwrapRight,
 	);
 
 	if (DEither.isLeft(variants)) {
@@ -106,7 +84,7 @@ export async function analyzeEitherOfNode(node: TsAST.Node, context: BuildContex
 	}
 
 	const goType = await DCommon.asyncPipe(
-		createEitherGoType(unwrapped, variants, context),
+		createEitherGoType(unwrapParenthesizedType(typeNode), variants, context),
 		DEither.unwrapRight,
 	);
 

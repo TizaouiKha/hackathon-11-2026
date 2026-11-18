@@ -1,14 +1,18 @@
 import * as DArray from "@duplojs/lang/array";
 import * as DCommon from "@duplojs/lang/common";
 import * as DEither from "@duplojs/lang/either";
+import * as DGenerator from "@duplojs/lang/generator";
 import { GoAST, GoPrinter } from "@go";
 import { TsAST } from "@typescript";
 import type { BuildContext } from "../../../../context/build";
 import { typeTransformers } from "../../../type";
-import { registerEitherTag, type EitherSide } from "./tag";
+import { registerEitherTag, valueInformation, type EitherSide } from "./tag";
 import { either2TypeIdentifier, eitherCoreDependency, eitherTypeIdentifier } from "./sharedDependency";
 
 export type EitherGoValueType = GoAST.TypeReference | GoAST.Type;
+
+/** Exports de types DuploJS reconnus comme variantes Either. */
+export const eitherTypeNames: readonly string[] = ["Success", "Fail", "Left", "Right"];
 
 export interface EitherVariant {
 	readonly side: EitherSide;
@@ -200,11 +204,11 @@ function distinctTypes(types: readonly EitherGoValueType[]) {
 	).types;
 }
 
-function collectValueTypes(variants: readonly EitherVariant[], side: EitherSide) {
+function collectValueTypes(variants: readonly EitherVariant[], sides: readonly EitherSide[]) {
 	return distinctTypes(
 		DArray.flatMap(
 			variants,
-			(variant) => variant.side === side && variant.valueType
+			(variant) => DArray.includes(sides, variant.side) && variant.valueType
 				? [variant.valueType]
 				: [],
 		),
@@ -217,14 +221,15 @@ function collectValueTypes(variants: readonly EitherVariant[], side: EitherSide)
  * - une forme à droite et une autre à gauche -> `Either2[R, L]` ;
  * - sinon, refus explicite.
  * `Fail` / `undefined` est compatible avec toutes les formes.
+ * Une valeur brute (`TagValue`, D-16) est rangée du côté droit.
  */
 export function createEitherGoType(
 	node: TsAST.Node,
 	variants: readonly EitherVariant[],
 	context: BuildContext,
 ) {
-	const rightTypes = collectValueTypes(variants, "right");
-	const leftTypes = collectValueTypes(variants, "left");
+	const rightTypes = collectValueTypes(variants, ["right", "value"]);
+	const leftTypes = collectValueTypes(variants, ["left"]);
 	const allTypes = distinctTypes(DArray.concat(rightTypes, leftTypes));
 
 	if (allTypes.length > 1 && (rightTypes.length > 1 || leftTypes.length > 1)) {
@@ -269,28 +274,108 @@ export function createEitherGoType(
 }
 
 /**
- * Handler de type : une union (ou un membre seul) dont chaque membre est un
- * type Either de DuploJS. Retourne `notSupport` si un membre n'en est pas un.
+ * Lit une union de types : chaque membre est une variante Either
+ * (`Success<T>`, `Fail`, `Left<…>`, `Right<…>`) ou une **valeur brute**
+ * (`number`, `number[]`…), qui devient une variante `TagValue` (D-16).
+ * Retourne `none` si l'union ne contient aucun type Either : ce n'est alors
+ * pas un type du domaine Either.
+ */
+export async function resolveUnionVariants(node: TsAST.TypeNode, context: BuildContext) {
+	const unwrapped = unwrapParenthesizedType(node);
+	const members = TsAST.isUnionTypeNode(unwrapped)
+		? unwrapped.types
+		: [unwrapped];
+
+	const variants = await DCommon.asyncPipe(
+		members,
+		DGenerator.asyncReduce(
+			DGenerator.reduceFrom<{
+				variants: readonly EitherVariant[];
+				hasEither: boolean;
+			}>({
+				variants: [],
+				hasEither: false,
+			}),
+			async({ item, lastValue, next, exit }) => {
+				const eitherVariant = isEitherMemberCandidate(item)
+					? await resolveEitherVariant(item, context)
+					: DEither.none();
+
+				if (DEither.isRight(eitherVariant)) {
+					return next({
+						variants: DArray.push(lastValue.variants, DEither.unwrapRight(eitherVariant)),
+						hasEither: true,
+					});
+				}
+
+				if (!DEither.hasInformation(eitherVariant, "none")) {
+					return exit(eitherVariant);
+				}
+
+				const valueType = await DCommon.asyncPipe(
+					transformValueType(item, context),
+					DEither.unwrapRight,
+				);
+
+				if (DEither.isLeft(valueType)) {
+					return exit(valueType);
+				}
+
+				return next({
+					variants: DArray.push(lastValue.variants, {
+						side: "value" as const,
+						information: valueInformation,
+						valueType,
+					}),
+					hasEither: lastValue.hasEither,
+				});
+			},
+		),
+	);
+
+	if (DEither.isLeft(variants)) {
+		return variants;
+	}
+
+	if (!variants.hasEither) {
+		return DEither.none();
+	}
+
+	return DEither.some(variants.variants);
+}
+
+/** Vrai si l'union contient au moins un type Either de DuploJS (sans rien transformer). */
+export async function containsEitherType(node: TsAST.TypeNode, context: BuildContext) {
+	const unwrapped = unwrapParenthesizedType(node);
+	const members = TsAST.isUnionTypeNode(unwrapped)
+		? unwrapped.types
+		: [unwrapped];
+	const candidates = DArray.filter(members, isEitherMemberCandidate);
+
+	const names = await DCommon.asyncPipe(
+		candidates,
+		DArray.map((member) => resolveEitherTypeName(member, context)),
+		DCommon.promiseAll,
+	);
+
+	return DArray.some(names, (name) => name !== undefined && DArray.includes(eitherTypeNames, name));
+}
+
+/**
+ * Handler de type : une union contenant au moins un type Either de DuploJS.
+ * Retourne `notSupport` sinon.
  */
 export async function eitherTypeHandler(
 	node: TsAST.TypeNode,
-	members: readonly EitherMemberNode[],
 	context: BuildContext,
 ) {
-	const variants = await DCommon.asyncPipe(
-		members,
-		DArray.map((member) => resolveEitherVariant(member, context)),
-		DCommon.promiseAll,
-		DArray.reduce(
-			DArray.reduceFrom<readonly EitherVariant[]>([]),
-			({ element, lastValue, next, exit }) => {
-				if (DEither.isLeft(element)) {
-					return exit(element);
-				}
+	if (!await containsEitherType(node, context)) {
+		return context.notSupport();
+	}
 
-				return next(DArray.push(lastValue, DEither.unwrapRight(element)));
-			},
-		),
+	const variants = await DCommon.asyncPipe(
+		resolveUnionVariants(node, context),
+		DEither.unwrapRight,
 	);
 
 	if (DEither.isLeft(variants)) {
@@ -299,5 +384,5 @@ export async function eitherTypeHandler(
 			: variants;
 	}
 
-	return createEitherGoType(node, variants, context);
+	return createEitherGoType(unwrapParenthesizedType(node), variants, context);
 }

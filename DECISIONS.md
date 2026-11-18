@@ -158,7 +158,7 @@ func RightPipe…, Group…, MatchInformation…
   - une étape de `rightPipe` qui change de type d'Either ou renvoie une valeur brute ;
   - un callback dont le paramètre est plus précis que ce qu'il reçoit.
 
-### D-16 · Résultat de `whenIsRight` : « valeur brute | erreur » — 🟡 **à valider en équipe**
+### D-16 · Résultat de `whenIsRight` : « valeur brute | erreur » — ✅ validé (18/11/2026) et implémenté (branche `etape-7-either-helpers`)
 **Le problème.** `DEither.whenIsRight(r, f)` ne renvoie **pas** un `Either` :
 - si `r` est un succès, il renvoie **directement** `f(valeur)`, une valeur brute ;
 - sinon, il renvoie `r` tel quel (l'erreur).
@@ -178,7 +178,32 @@ Either[[]float64]{Tag: TagLeftFail}                     // erreur : inchangée
 
 **Alternative écartée** : un nouveau type `ValueOrEither[V, T]`. C'est plus explicite, mais il faut doubler tous les helpers et tout l'affichage.
 
-**À décider** : valider `TagValue`, ou proposer autre chose. Ça concerne aussi la personne de l'étape 4 (`print`).
+**Décision** : `TagValue` est validé en équipe.
+
+**Mise en œuvre** :
+- **Le tag réservé `TagValue`** est créé au premier usage, comme les autres tags. `TagValue.IsRight()` vaut `false`, et `TagValue.Information()` vaut `"value"`.
+- **Les unions mixtes sont reconnues** (`either/core/type.ts`, `resolveUnionVariants`) : dans une union qui contient **au moins un** type Either, chaque membre qui n'est pas un Either (`number`, `boolean`, `number[]`…) devient une variante « valeur brute ». La valeur brute est rangée **du côté droit** pour la règle `Either` / `Either2` de D-09.2. Exemples :
+  - `number | Left<"x", number>` donne `Either[float64]` ;
+  - `boolean | Left<"x", number>` donne `Either2[bool, float64]` ;
+  - `boolean | Fail` donne `Either[bool]`.
+
+  Une union **sans** type Either (`number | undefined`) n'est pas concernée.
+- **Le helper `WhenIsRight[T, V, O]`** reçoit deux petites fonctions générées par le transpileur :
+  ```go
+  shard_dependencies.WhenIsRight(result, double,
+      func(v float64) Either[float64] { return Either[float64]{Tag: TagValue, Value: v} },        // succès -> valeur brute
+      func(l Either[float64]) Either[float64] { return Either[float64]{Tag: l.Tag, Value: l.Value} }, // erreur recopiée
+  )
+  ```
+  Si l'erreur ne porte pas de valeur (`Fail` seul), elle est recopiée sans `Value`.
+- **Limites explicites** :
+  - entrée `Either2` ;
+  - callback qui renvoie lui-même un Either ;
+  - erreur dont la valeur n'a pas le même type que dans le résultat.
+
+  Aucun exercice n'est concerné.
+- **Pour `print` (étape 4)** : quand `Tag == TagValue`, afficher **seulement** la valeur (`Value`, ou `Right` pour un `Either2`), comme une valeur brute (`[ 3 ]`). Sinon, afficher l'objet DuploJS.
+- **Testé** : `tests/either-helpers/`, 14 contrôles dédiés (succès, left, fail, `Either2`, `Fail` seul, `isRight` d'une valeur brute).
 
 ### D-10 · `pipe` / formes curryfiées — ✅ (adapté à D-09.3)
 - `DCommon.pipe(x, f, g)` est **déroulé à la compilation** en `t1 := f(x)`, puis `t2 := g(t1)`. Ce n'est pas une optimisation : Go n'a pas de génériques variadiques, donc un `Pipe` générique est impossible sans écrire `Pipe2`, `Pipe3`… Le déroulé est ici le plus simple.

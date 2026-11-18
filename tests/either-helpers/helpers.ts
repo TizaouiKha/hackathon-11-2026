@@ -134,3 +134,56 @@ export function pipeRejectThenHalve(result: (
 )) {
 	return DEither.rightPipe(result, reject, halve);
 }
+
+// whenIsRight (D-16) : renvoie la valeur brute (TagValue) ou l'erreur inchangée.
+export function whenRightDouble(result: (
+	| DEither.Success<number>
+	| DEither.Left<"negative-operand", number>
+	| DEither.Fail
+)) {
+	return DEither.whenIsRight(result, double);
+}
+
+// Valeur brute d'un autre type que l'erreur : Either2[bool, float64].
+function isBig(value: number) {
+	return value > 5;
+}
+
+export function whenRightIsBig(result: (
+	| DEither.Success<number>
+	| DEither.Left<"negative-operand", number>
+	| DEither.Fail
+)) {
+	return DEither.whenIsRight(result, isBig);
+}
+
+// Seul `Fail` à gauche (pas de valeur) : Either[bool].
+export function successOrFail(value: number): (
+	| DEither.Success<number>
+	| DEither.Fail
+) {
+	return DEither.success(value);
+}
+
+export function onlyFail(): (
+	| DEither.Success<number>
+	| DEither.Fail
+) {
+	return DEither.fail();
+}
+
+export function whenRightIsBigFailOnly(result: (
+	| DEither.Success<number>
+	| DEither.Fail
+)) {
+	return DEither.whenIsRight(result, isBig);
+}
+
+// isRight d'une valeur brute : faux, comme en DuploJS.
+export function isRightOfRaw(result: (
+	| DEither.Success<number>
+	| DEither.Left<"negative-operand", number>
+	| DEither.Fail
+)) {
+	return DEither.isRight(DEither.whenIsRight(result, double));
+}
