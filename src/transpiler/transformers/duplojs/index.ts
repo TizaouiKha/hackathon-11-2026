@@ -1,6 +1,7 @@
 import * as DCommon from "@duplojs/lang/common";
 import { duploJSEitherDeclarationTransformer, duploJSEitherExpressionTransformer, duploJSEitherTypeTransformer } from "./either";
 import { duploJSCommonExpressionTransformer } from "./common";
+import { duploJSStringExpressionTransformer } from "./string";
 import type { GoAST } from "@go";
 import { type Transformer } from "@transformer";
 
@@ -11,6 +12,7 @@ export const duploJSExpressionTransformers = DCommon.memo(
 	(): readonly Transformer<GoAST.Expression>[] => [
 		duploJSEitherExpressionTransformer,
 		duploJSCommonExpressionTransformer,
+		duploJSStringExpressionTransformer,
 	],
 );
 export const duploJSStatementTransformers = DCommon.memo(
