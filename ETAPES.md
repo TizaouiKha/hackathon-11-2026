@@ -53,7 +53,12 @@ Répartition conseillée pour 3 personnes :
    - pour les API DuploJS : un **routeur** qui résout le symbole, puis un **handler** par fonction. On ne reconnaît jamais une fonction à son seul nom ;
    - listes de transformers en `DCommon.memo`.
 3. **Pour construire du Go**, utilise les factories existantes `GoAST.create...` (dans `src/go/AST/`). N'en écris pas de nouvelles sauf si un nœud manque vraiment.
-4. **Une étape est finie quand** `./.commands/check.sh NN` affiche ✓ pour les projets concernés, **et** que `pnpm test:types` passe.
+4. **Une étape est finie quand** :
+   - `./.commands/check.sh NN` affiche ✓ pour les projets concernés ;
+   - `pnpm test:runtime` passe (tests d'exécution de `tests/`, voir l'étape 2) ;
+   - `pnpm test:types` et `pnpm test:lint` passent.
+
+   Quand une étape ne peut pas encore être validée par un projet complet (par exemple parce qu'il manque `print`), **ajoute un test d'exécution** dans `tests/<nom>/` pour prouver que ton code marche.
 5. **On note tout** : un choix dans `DECISIONS.md`, l'avancement et le Go obtenu dans `EXERCICES.md`. On les met à jour dans le même commit que le code.
 6. **Git** : une branche par étape (`etape-3-either`, etc.), puis une PR vers `main`. Petits commits, messages clairs.
 
@@ -102,6 +107,23 @@ Correction dans `src/transpiler/transformers/duplojs/either/success/index.ts` : 
 
 C'est **l'outil de validation de toutes les étapes**. Si les sorties diffèrent, le script affiche un diff : `-` pour ce que TypeScript affiche, `+` pour ce que le Go affiche.
 
+### Tests d'exécution : `pnpm test:runtime`
+
+`check.sh` ne peut valider une brique que si un projet complet tourne. Or, au début, il manque encore `print`, `if`… Pour tester une brique **seule**, on écrit un test d'exécution :
+
+```
+tests/<nom>/
+├── tsconfig.json   (copie de projects/00/tsconfig.json)
+├── index.ts        (point d'entrée : importe au moins un fichier à tester)
+├── xxx.ts          (le TypeScript à transpiler)
+└── check/main.go   (programme Go écrit à la main : appelle le Go transpilé et vérifie les valeurs)
+```
+
+- `pnpm test:runtime` lance tous les tests, et `./.commands/test-runtime.sh either` un seul.
+- Le script transpile le dossier, copie `check/` dans `dist/`, puis lance `go vet` et `go run ./check`.
+- `check/main.go` importe le package transpilé (par exemple `shapes "duplojs.local/transpiled/shapes.ts"`) et appelle les fonctions sous leur nom Go (`shapes.Sourced_maFonction(...)`). Il doit **sortir avec un code d'erreur** si un contrôle échoue (`os.Exit(1)`).
+- Exemple complet : `tests/either/` (étape 3), avec 21 contrôles.
+
 ---
 
 ## Étape 3 — Représentation des `Either` en Go
@@ -119,7 +141,7 @@ C'est **l'outil de validation de toutes les étapes**. Si les sorties diffèrent
 >   - `r.Value` pour `Either`, `r.Right` / `r.Left` pour `Either2`.
 > - **Vérifié** :
 >   - `check.sh 00` ✓ ;
->   - un projet de test avec un `fail` dans une union explicite, un `left` inféré, un littéral `0` élargi en `float64`, et un `Either2` : le Go compile ;
+>   - **`tests/either/`** (`pnpm test:runtime`) : un `fail` dans une union explicite, un `success`, un `left` inféré, un littéral `0` élargi en `float64`, et `Either2` des deux côtés. Le Go est **exécuté**, et 21 contrôles vérifient `IsRight()`, `Information()`, les valeurs et l'unicité des tags ;
 >   - lint et types OK.
 > - **Pas encore vérifiable** : le `add` du projet 04 a besoin du transformer `if` (étape 6), et `Success<number[]>` (projet 09) a besoin des types tableau (étape 6).
 >

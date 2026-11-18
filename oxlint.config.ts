@@ -8,6 +8,7 @@ export default oxlint.defineConfig({
 				"src/**",
 				"projects/**",
 				"bin/**",
+				"tests/**",
 				"oxlint.config.ts",
 			],
 			ruleset: { open: true },

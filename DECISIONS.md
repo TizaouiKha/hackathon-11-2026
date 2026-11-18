@@ -169,6 +169,7 @@ func RightPipe…, Group…, MatchInformation…
 ### D-14 · Validation par comparaison automatique avec TypeScript — ✅
 - `./.commands/check.sh NN` (ou `pnpm check NN`) transpile, compile, exécute le Go et le TS, puis fait un `diff` des sorties.
 - Une étape ou un exercice est validé seulement si ce script affiche ✓.
+- **Complément (18/11/2026)** : les **tests d'exécution** `tests/<nom>/` (`pnpm test:runtime`). Ils servent à valider une brique seule, avant que les projets complets puissent tourner : un petit TS à transpiler, plus un `check/main.go` écrit à la main qui vérifie les valeurs Go. Le premier est `tests/either/` (étape 3, 21 contrôles). Leur `dist/` est ignoré par git, et ils sont inclus dans le lint (`oxlint.config.ts`).
 
 ### D-15 · Organisation du travail — ✅
 - Les étapes, leurs dépendances et la répartition sont dans [ETAPES.md](ETAPES.md). Chacun s'inscrit sur une étape avant de la commencer.

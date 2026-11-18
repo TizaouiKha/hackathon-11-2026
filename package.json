@@ -6,7 +6,8 @@
     "build:01": "pnpm build --tsconfig projects/01/tsconfig.json --input projects/01/index.ts --output projects/01/dist",
     "test:types": "./.commands/test-types.sh",
     "test:lint": "./.commands/test-lint.sh",
-		"check": "./.commands/check.sh"
+		"check": "./.commands/check.sh",
+		"test:runtime": "./.commands/test-runtime.sh"
   },
   "devEngines": {
     "packageManager": {
