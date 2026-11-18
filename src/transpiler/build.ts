@@ -94,7 +94,18 @@ export function build(
 						({ item, lastValue, nextWithObject }) => nextWithObject(
 							lastValue,
 							{
-								imports: DArray.concat(lastValue.imports, item.imports),
+								// Deux dépendances peuvent importer le même paquet (`math`…) :
+								// un import en double ne compile pas en Go.
+								imports: DArray.concat(
+									lastValue.imports,
+									DArray.filter(
+										item.imports,
+										(candidate) => !DArray.some(
+											lastValue.imports,
+											(existing) => existing.path === candidate.path,
+										),
+									),
+								),
 								declarations: DArray.concat(
 									lastValue.declarations,
 									item.declarations,
