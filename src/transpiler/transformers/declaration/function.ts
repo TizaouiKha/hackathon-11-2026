@@ -3,8 +3,9 @@ import { GoAST } from "@go";
 import { createTransformer, type Transformer } from "@transformer";
 import * as DCommon from "@duplojs/lang/common";
 import * as DArray from "@duplojs/lang/array";
-import { typeTransformers } from "../type";
+import { tsTypeToGo } from "../type";
 import * as DEither from "@duplojs/lang/either";
+import { TypeFlags } from "typescript/async";
 import { blockStatementTransformer } from "../statement/block";
 
 export const functionDeclarationTransformer: Transformer<GoAST.FunctionDeclaration> = createTransformer(
@@ -15,31 +16,33 @@ export const functionDeclarationTransformer: Transformer<GoAST.FunctionDeclarati
 
 		const functionIdentifier = context.createSourceIdentifier(node.name.text);
 
+		const { typeChecker } = context.transpilation;
+
+		// Types des paramètres et du retour : toujours le type résolu par le checker
+		// (écrit ou inféré), traduit par la couche centrale `tsTypeToGo` (D-18).
 		const functionArguments = await DCommon.asyncPipe(
 			node.parameters,
 			DArray.map(
-				(parameters) => DCommon.asyncPipe(
-					context.transform(
-						parameters.type ?? TsAST.factory.createKeywordTypeNode(TsAST.SyntaxKind.AnyKeyword),
-						typeTransformers.value,
-					),
-					DEither.whenIsRight(
-						({ before, result }) => {
-							if (!DArray.lengthEqual(before, 0)) {
-								return context.error(parameters, "un-support-before-on-parameter");
-							}
+				async(parameters) => {
+					if (!TsAST.isIdentifier(parameters.name)) {
+						return context.error(parameters, "params-name-is-not-identifier");
+					}
 
-							if (!TsAST.isIdentifier(parameters.name)) {
-								return context.error(parameters, "params-name-is-not-identifier");
-							}
+					const parameterType = await tsTypeToGo(
+						await typeChecker.getTypeAtLocation(parameters.name),
+						parameters,
+						context,
+					);
 
-							return GoAST.createFunctionArgument({
-								identifier: context.createSourceIdentifier(parameters.name.text),
-								type: result,
-							});
-						},
-					),
-				),
+					if (DEither.isLeft(parameterType)) {
+						return parameterType;
+					}
+
+					return GoAST.createFunctionArgument({
+						identifier: context.createSourceIdentifier(parameters.name.text),
+						type: DEither.unwrapRight(parameterType),
+					});
+				},
 			),
 			DCommon.promiseAll,
 			DArray.reduce(
@@ -63,24 +66,19 @@ export const functionDeclarationTransformer: Transformer<GoAST.FunctionDeclarati
 			return functionArguments;
 		}
 
-		const signature = await context.transpilation.typeChecker.getSignatureFromDeclaration(node);
-
-		const returnTypeNode = node.type ?? await context.transpilation.typeChecker.typeToTypeNode(
-			await context.transpilation.typeChecker.getReturnTypeOfSignature(signature),
-			node,
-		) ?? TsAST.factory.createKeywordTypeNode(TsAST.SyntaxKind.AnyKeyword);
-
-		const returnType = await DCommon.asyncPipe(
-			context.transform(returnTypeNode, typeTransformers.value),
-			DEither.unwrapRight,
+		const tsReturnType = await typeChecker.getReturnTypeOfSignature(
+			await typeChecker.getSignatureFromDeclaration(node),
 		);
 
-		if (DEither.isLeft(returnType)) {
-			return returnType;
-		}
+		// Une fonction `void` n'a pas de valeur de retour en Go (`undefined` en a une : JSUndefined).
+		const returnsNothing = (tsReturnType.flags & TypeFlags.Void) !== 0;
 
-		if (!DArray.lengthEqual(returnType.before, 0)) {
-			return context.error(returnTypeNode, "un-support-before-on-return-type");
+		const returnType = returnsNothing
+			? undefined
+			: await tsTypeToGo(tsReturnType, node, context);
+
+		if (returnType && DEither.isLeft(returnType)) {
+			return returnType;
 		}
 
 		const body = await DCommon.asyncPipe(
@@ -93,14 +91,14 @@ export const functionDeclarationTransformer: Transformer<GoAST.FunctionDeclarati
 		}
 
 		if (!DArray.lengthEqual(body.before, 0)) {
-			return context.error(returnTypeNode, "un-support-before-on-block-statement");
+			return context.error(node, "un-support-before-on-block-statement");
 		}
 
 		return context.success({
 			result: GoAST.createFunctionDeclaration({
 				identifier: functionIdentifier,
 				arguments: functionArguments,
-				returnTypes: [returnType.result],
+				returnTypes: returnType ? [DEither.unwrapRight(returnType)] : [],
 				body: body.result,
 				generic: [],
 			}),

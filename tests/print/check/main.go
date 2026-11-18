@@ -16,13 +16,13 @@ type sampleObject struct {
 }
 
 func main() {
-	rawValue := shard.Either[float64]{
+	rawValue := shard.EitherAny{
 		Tag:   shard.TagValue,
-		Value: 6,
+		Value: 6.0,
 	}
-	rawSlice := shard.Either2[[]float64, float64]{
+	rawSlice := shard.EitherAny{
 		Tag:   shard.TagValue,
-		Right: []float64{3},
+		Value: []float64{3},
 	}
 
 	outputReader, outputWriter, err := os.Pipe()
@@ -62,12 +62,13 @@ func main() {
 		os.Exit(1)
 	}
 
-	success := shard.Either[float64]{
+	success := shard.EitherAny{
 		Tag:   shard.TagRightSuccess,
-		Value: 3,
+		Value: 3.0,
 	}
-	fail := shard.Either[float64]{
-		Tag: shard.TagLeftFail,
+	fail := shard.EitherAny{
+		Tag:   shard.TagLeftFail,
+		Value: shard.JSUndefined{},
 	}
 	checks := []struct {
 		name string
@@ -98,7 +99,7 @@ func main() {
 			"{ simple: 1, 'not-simple': 2 }",
 		},
 		{"raw Either value", shard.Inspect(rawValue), "6"},
-		{"raw Either2 slice", shard.Inspect(rawSlice), "[ 3 ]"},
+		{"raw EitherAny slice", shard.Inspect(rawSlice), "[ 3 ]"},
 		{
 			"Either success",
 			shard.Inspect(success),

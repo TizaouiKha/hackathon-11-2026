@@ -7,11 +7,13 @@ import { type BuildContext } from "../../../../context/build";
 import { constructEither, requireCall } from "../core/construct";
 
 /**
- * `DEither.left("negative-operand", value)`
- * -> `Either[T]{Tag: TagLeftNegativeOperand, Value: value}`.
+ * Constructeur à information libre, pour un côté donné :
+ * `DEither.left("negative-operand", value)` / `DEither.right("valid-username", value)`
+ * -> `EitherAny{Tag: TagLeftNegativeOperand, Value: value}`.
  * L'information doit être un littéral : elle devient une constante de tag.
  */
-export async function leftExpressionHandler(
+export async function namedConstructorHandler(
+	side: "left" | "right",
 	node: TsAST.Node,
 	context: BuildContext,
 ): Promise<ReturnType<Transformer<GoAST.Expression>["transformer"]>> {
@@ -34,10 +36,18 @@ export async function leftExpressionHandler(
 	return constructEither(
 		{
 			call: callNode,
-			side: "left",
+			side,
 			information: information.text,
 			value: DArray.at(callNode.arguments, 1),
 		},
 		context,
 	);
+}
+
+export function leftExpressionHandler(node: TsAST.Node, context: BuildContext) {
+	return namedConstructorHandler("left", node, context);
+}
+
+export function rightExpressionHandler(node: TsAST.Node, context: BuildContext) {
+	return namedConstructorHandler("right", node, context);
 }

@@ -6,13 +6,13 @@ import { TsAST } from "@typescript";
 import * as DPattern from "@duplojs/lang/pattern";
 import { successExpressionHandler } from "./success";
 import { failExpressionHandler } from "./fail";
-import { leftExpressionHandler } from "./left";
+import { leftExpressionHandler, rightExpressionHandler } from "./left";
+import { errorExpressionHandler } from "./error";
 import { isRightExpressionHandler } from "./isRight";
 import { whenIsRightOtherwiseExpressionHandler } from "./whenIsRightOtherwise";
 import { matchInformationExpressionHandler } from "./matchInformation";
 import { rightPipeExpressionHandler } from "./rightPipe";
 import { whenIsRightExpressionHandler } from "./whenIsRight";
-import { eitherTypeHandler } from "./core/type";
 
 export const duploJSEitherDeclarationTransformer: Transformer<GoAST.Declaration> = createTransformer(
 	(_node, context) => context.notSupport(),
@@ -55,6 +55,14 @@ export const duploJSEitherExpressionTransformer: Transformer<GoAST.Expression> =
 				() => leftExpressionHandler(node, context),
 			),
 			DPattern.match(
+				DCommon.equal("right"),
+				() => rightExpressionHandler(node, context),
+			),
+			DPattern.match(
+				DCommon.equal("error"),
+				() => errorExpressionHandler(node, context),
+			),
+			DPattern.match(
 				DCommon.equal("isRight"),
 				() => isRightExpressionHandler(node, context),
 			),
@@ -78,20 +86,5 @@ export const duploJSEitherExpressionTransformer: Transformer<GoAST.Expression> =
 				() => context.error(node),
 			),
 		);
-	},
-);
-
-/**
- * Types Either : un membre seul (`Success<number>`) ou une union contenant au
- * moins un type Either (`Fail | Success<number>`, ou `number | Fail` avec une
- * valeur brute, D-16), parenthèses comprises.
- */
-export const duploJSEitherTypeTransformer: Transformer<GoAST.GenericTypeReference> = createTransformer(
-	(node, context) => {
-		if (!TsAST.isTypeNode(node)) {
-			return context.notSupport();
-		}
-
-		return eitherTypeHandler(node, context);
 	},
 );

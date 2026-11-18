@@ -81,7 +81,12 @@ export function build(
 
 				const file = DCommon.pipe(
 					DGenerator.concat(
-						defaultSharedDependencies.value,
+						// Une dépendance par défaut peut aussi être enregistrée explicitement
+						// (`JSNull` pour le type `null`) : elle ne doit être déclarée qu'une fois.
+						DArray.filter(
+							defaultSharedDependencies.value,
+							(dependency) => !context.sharedDependencies.has(dependency),
+						),
 						context.sharedDependencies,
 					),
 					DGenerator.reduce(

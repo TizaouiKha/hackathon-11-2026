@@ -231,6 +231,125 @@ func(input shard_dependencies.Either[float64]) shard_dependencies.Either[float64
 - **Pourquoi pas « injecter » la donnée dans le `pipe` ?** C'est plus court en Go, mais ça ne marche que dans un `pipe`. Une vraie fonction marche aussi dans `DArray.map` (projet 08) et partout ailleurs.
 - **Vérifié** : `tests/pipe/`, 15 contrôles. Les valeurs attendues ont été obtenues en exécutant le même code TypeScript avec DuploJS. Ce test confirme notamment que la valeur brute (`TagValue`) produite par `whenIsRight` n'est **pas** un Right pour l'étape suivante, comme en DuploJS.
 
+### D-18 · `EitherAny` et couche de traduction TypeScript → Go — ✅ validé avec le prof (18/11/2026), en cours (branche `d18-traduction-types`)
+
+**Le problème.** DuploJS raisonne par **issue** : une information et sa valeur, en nombre illimité, chacune de son propre type. C'est le sens de l'article « Une erreur devrait être identifiable avant d'être traitée ». Notre représentation (D-09.2 : `Either[T]` / `Either2[R, L]`) découpe par **côté**, ne gère que 2 types de valeur, et rejette des unions réelles comme celle du code du prof : `Left<"must-be-not-contain-number", undefined> | Error<null> | Success<number & Positive>`.
+
+Plus largement, TypeScript et Go **n'expriment pas les types de la même manière** :
+- unions, types littéraux, marques (`number & Positive`) ;
+- typage structurel contre typage nominal ;
+- narrowing selon l'endroit, types calculés (`Extract`, `ReturnType`).
+
+Les valeurs ne se comportent pas pareil non plus : `"é".length` vaut 1 en JS (UTF-16) mais `len("é")` vaut 2 en Go (UTF-8).
+
+**Décision, en deux parties.**
+
+**1. Une seule représentation pour toutes les unions d'`Either` :**
+```go
+type EitherAny struct {
+    Tag   EitherTag // l'issue : information + côté (tags inchangés, TagValue compris)
+    Value any       // la valeur, de n'importe quel type ; JSUndefined{} / JSNull{} pour undefined / null
+}
+```
+- N issues, de n'importe quel type, sans règle `Either` / `Either2` et sans conversion entre formes d'union.
+- **Côté Go, on ne vérifie pas le type de la valeur** : TypeScript l'a déjà validé.
+- **Lire la valeur** : un `any` est une boîte fermée, et Go refuse `v + 1` ou `v.Name`. À chaque endroit où le code lit la valeur, le checker connaît son type exact. Le transpileur génère donc :
+  - **une assertion** `e.Value.(float64)` si TS indique un seul type (~1 ns mesurée) ;
+  - **un type switch** si TS indique une union de valeurs brutes ;
+  - **rien** si la valeur est seulement transmise ;
+  - **la réflexion** pour `print`.
+- **Mesuré** (`go test -bench`) : assertion ~1 ns. Ranger un `float64` dans `any` coûte une allocation (6,3 ns contre 2,4 ns sans). Une case `Num float64` à part est une **optimisation possible plus tard** (étape 11), pas maintenant.
+
+**2. Une couche de traduction centrale : `tsTypeToGo(type)`.** Un **seul** endroit traduit un type du checker (objet `Type`, et non plus un nœud de type) en type Go :
+
+| TypeScript | Go |
+|---|---|
+| `number`, littéral numérique, `number & Marque` | `float64` |
+| `string`, littéral, template literal, `string & Marque` | `string` |
+| `boolean`, `true`, `false` | `bool` |
+| `null` / `undefined`, `void` | `shard_dependencies.JSNull` / `JSUndefined` |
+| union contenant un type `Either` de DuploJS | `shard_dependencies.EitherAny` |
+| `T[]`, `readonly T[]` | `[]T` |
+| tuple `[A, B, C]` | `[3]T` si tous les éléments ont le même type Go, sinon `struct{ V0 A; V1 B; V2 C }` |
+| objet `{ name: string }` | struct **anonyme** `struct{ Name string }` : Go traite deux structs anonymes de même forme comme le même type, ce qui correspond au typage structurel de TS |
+| fonction `(a: A) => R` | `func(A) R` |
+| `Promise<T>` | `T` (D-11, exécution synchrone) |
+| union de valeurs brutes (`string \| number`), `unknown`, `any`, `T` générique non résolu | `any` |
+
+Les types calculés (`Extract`, `ReturnType`…) n'ont pas besoin de règle : le checker donne leur **résultat** à chaque endroit.
+
+**Pourquoi.**
+- Un seul point de vérité au lieu de traductions éparpillées dans chaque transformer. C'est la cause des limites rencontrées : `number[]` non géré, unions refusées, marques non retirées.
+- Ça débloque d'un coup `EitherAny`, le narrowing, les tableaux (étape 6) et l'exemple du prof.
+
+**Plan.**
+1. **Phase 1, décidée en équipe : uniquement `EitherAny` et les types primitifs.**
+   - `tsTypeToGo` traduit `number`, `string`, `boolean`, `null`, `undefined` / `void`, leurs littéraux, les marques et les unions d'`Either`.
+   - Tout le reste (tableaux, tuples, objets, fonctions, `Promise`) renvoie pour l'instant une **erreur claire** `type-not-supported-yet`.
+   - On passe à `EitherAny` (constructeurs, helpers, `print`).
+2. Lecture typée aux endroits de lecture, narrowing compris.
+3. Tableaux, tuples, objets, fonctions, `Promise` (le reste du tableau ci-dessus).
+4. Sémantique des valeurs (`JSStringLength` en UTF-16…).
+
+**Remplace** D-09.2 (règle `Either` / `Either2`) et la partie « par côté » de D-09.4. Le tag entier (D-09.1), `TagValue` (D-16) et les formes curryfiées (D-17) restent.
+
+#### D-18.1 · Phase 1 faite — ✅ (18/11/2026, branche `d18-traduction-types`)
+
+**`tsTypeToGo`** (`transformers/type/tsTypeToGo.ts`) :
+- c'est le **seul** point de traduction des types ;
+- il travaille sur les objets `Type` du checker, et non plus sur des nœuds de type ;
+- les types écrits dans la source (`(one: number)`) passent par `typeNodeTransformer`, qui demande leur `Type` au checker puis appelle `tsTypeToGo` ;
+- les paramètres et retours de fonction prennent toujours le type **résolu** par le checker, qu'il soit écrit ou inféré. Une fonction `void` n'a pas de retour Go ; une fonction qui renvoie `undefined` renvoie un `JSUndefined`.
+
+**Les issues d'un Either** (`either/core/issues.ts`) sont lues sur le `Type` :
+- les membres `Success`, `Fail`, `Error`, `Left` et `Right`, dont l'origine `@duplojs/lang` est vérifiée par le symbole ;
+- leur information et le type de leur valeur, via `getTypeArguments` ;
+- les autres membres comme valeurs brutes (`TagValue`).
+
+**`EitherAny`** remplace `Either[T]` / `Either2[R, L]`, partout.
+
+**Constructeurs** : de simples littéraux `EitherAny{Tag, Value}`. Il n'y a plus de « type cible » à calculer. Sont ajoutés :
+- `DEither.error(v)` (issue `left` / `error`) ;
+- `DEither.right("info", v)`.
+
+**Helpers** : une seule version chacun, sur `EitherAny`. Le type `T` est celui que le callback TypeScript déclare, inféré par Go, et l'assertion `input.Value.(T)` ouvre la valeur.
+
+| Helper | Signature |
+|---|---|
+| `WhenIsRightOtherwise[T, U]` | `(input EitherAny, onRight func(T) U, otherwise func(EitherAny) U) U` |
+| `MatchInformation[U]` | `(input EitherAny, handlers []func(any) U) U` : chaque handler est enveloppé pour ouvrir **sa** valeur avec **son** type |
+| `RightThen[T]` | `(input EitherAny, next func(T) EitherAny) EitherAny` |
+| `WhenIsRight[T, V]` | `(input EitherAny, onRight func(T) V) EitherAny`, avec `TagValue` |
+
+**Limites levées** :
+- `matchInformation`, `rightPipe` et `whenIsRight` sur des issues de types différents ;
+- une étape de `rightPipe` qui change de type ou renvoie une valeur brute (rangée dans un `success`, comme DuploJS) ;
+- `whenIsRight` avec un callback qui renvoie un Either (même comportement que `RightThen`).
+
+**Adaptation des callbacks** (`either/core/callback.ts`), automatique :
+- moins de paramètres déclarés que reçus ;
+- `any` reçu alors qu'un type précis est attendu : assertion ;
+- type de retour différent de celui attendu par le helper.
+
+**Valeurs `null` / `undefined`** (`expression/nullish.ts`) : `JSNull{}` / `JSUndefined{}`, des marqueurs de taille nulle.
+
+**`print`** marche avec `EitherAny` (lecture de `Value` par réflexion), avec une **correction** : la 4ᵉ clé (`…/success: null`) n'est affichée que pour `success`, `error` et `fail`, comme dans Node. Un `left("x")` ou un `right("x", v)` n'en a pas.
+
+**`build.ts`** : une dépendance par défaut (`JSNull`…) enregistrée explicitement n'est plus déclarée deux fois.
+
+**Vérifié** :
+- `tests/ts-types/` (15 contrôles) :
+  - les signatures Go générées, lues par réflexion (`number & Positive` donne `float64`, `"a" | "b"` donne `string`, `string | number` donne `any`, l'union du prof donne `EitherAny`…) ;
+  - les valeurs ;
+  - l'affichage des issues du code du prof, **identique à Node** (obtenu en exécutant le même code avec `tsx`) ;
+- les 6 autres tests d'exécution, mis à jour pour `EitherAny`, `check.sh 00`, les types et le lint (0 avertissement).
+
+**Pas encore fait (phases 2 à 4)** :
+- la lecture typée lors du narrowing (`if (isLeft(x)) return x;` puis `x` utilisé comme `string`) ;
+- `unwrapRight`, `isLeft` ;
+- les tableaux, objets, tuples, fonctions et `Promise` ;
+- `JSStringLength`.
+
 ### D-11 · Asynchrone (projet 10) — 🟡
 - Il n'y a aucune vraie entrée/sortie, donc une **exécution synchrone** (`Promise<T>` traduit en `T`) préserve l'ordre et le résultat.
 - Goroutines et channels seulement en bonus, si on a le temps.

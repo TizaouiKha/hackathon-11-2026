@@ -5,15 +5,14 @@ import * as DArray from "@duplojs/lang/array";
 import * as DCommon from "@duplojs/lang/common";
 import * as DEither from "@duplojs/lang/either";
 import { type BuildContext } from "../../../../context/build";
-import { analyzeEitherOfType, transformTsType } from "../core/analysis";
-import { transformCallback } from "../core/callback";
+import { analyzeEitherOfType, eitherAnyGoType, transformTsType } from "../core/analysis";
+import { inferParameter, transformCallback } from "../core/callback";
 import { translateCurried, translateWithData, type EitherOperation } from "../core/operand";
-import { whenIsRightOtherwise2Identifier, whenIsRightOtherwiseDependency, whenIsRightOtherwiseIdentifier } from "./sharedDependency";
+import { whenIsRightOtherwiseDependency, whenIsRightOtherwiseIdentifier } from "./sharedDependency";
 
 /**
  * Traduction de `whenIsRightOtherwise` pour une entrée donnée :
- * `shard_dependencies.WhenIsRightOtherwise(result, onRight, otherwise)`
- * (ou `WhenIsRightOtherwise2` pour un `Either2`).
+ * `shard_dependencies.WhenIsRightOtherwise(result, onRight, otherwise)`.
  */
 function whenIsRightOtherwiseOperation(
 	onRight: TsAST.Expression,
@@ -43,7 +42,7 @@ function whenIsRightOtherwiseOperation(
 			transformCallback(
 				{
 					node: onRight,
-					parameterTypes: [shape.rightValueType],
+					parameterTypes: [inferParameter],
 					returnType: outputGoType,
 				},
 				context,
@@ -59,7 +58,7 @@ function whenIsRightOtherwiseOperation(
 			transformCallback(
 				{
 					node: otherwise,
-					parameterTypes: [shape.goType],
+					parameterTypes: [eitherAnyGoType(context)],
 					returnType: outputGoType,
 				},
 				context,
@@ -82,9 +81,7 @@ function whenIsRightOtherwiseOperation(
 			result: GoAST.createCallExpression({
 				callee: GoAST.createSelectorExpression({
 					target: packageName,
-					identifier: shape.kind === "either"
-						? whenIsRightOtherwiseIdentifier
-						: whenIsRightOtherwise2Identifier,
+					identifier: whenIsRightOtherwiseIdentifier,
 				}),
 				arguments: [
 					operand.expression,

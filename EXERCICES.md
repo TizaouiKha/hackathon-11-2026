@@ -105,18 +105,18 @@ Objet Fail (projet 04) :
 - `DEither.success` devient la shared dependency `EitherSuccessOf[T]`, qui renvoie `EitherSuccess[T]` ;
 - l'appel au niveau du module part dans `init()`, et `main.go` importe le package d'entrée avec `_`.
 
-**Go généré** (`add.ts.go`), avec la représentation Either de l'étape 3 (D-09) :
+**Go généré** (`add.ts.go`), avec `EitherAny` (D-18) :
 ```go
-func Sourced_add(Sourced_one float64, Sourced_two float64) (shard_dependencies.Either[float64]) {
+func Sourced_add(Sourced_one float64, Sourced_two float64) (shard_dependencies.EitherAny) {
 	Generated_4 := Sourced_one
 	Generated_5 := Sourced_two
-	return (shard_dependencies.Either[float64]{
+	return (shard_dependencies.EitherAny{
 		Tag: shard_dependencies.TagRightSuccess,
 		Value: Generated_4 + Generated_5,
 	})
 }
 ```
-`DEither.success(x)` devient directement un littéral de struct : pas d'appel de fonction ni de variable intermédiaire.
+`DEither.success(x)` devient directement un littéral de struct : pas d'appel de fonction. Les 2 variables temporaires disparaîtront avec l'étape 5 (helper de préparation), pas encore mergée.
 
 **Fait / reste à faire** :
 - [x] corriger B-01. Cette correction est maintenant remplacée par l'étape 3, qui supprime `EitherSuccessOf` ;

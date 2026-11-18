@@ -34,8 +34,8 @@ func main() {
 	expect("whenIsRightOtherwise(success): double", helpers.Sourced_rightOrOtherwise(success), 20)
 	expect("whenIsRightOtherwise(left): minusOne", helpers.Sourced_rightOrOtherwise(negative), -1)
 	expect("whenIsRightOtherwise(fail): minusOne", helpers.Sourced_rightOrOtherwise(fail), -1)
-	expect("whenIsRightOtherwise Either2 (droite)", helpers.Sourced_either2RightOrOtherwise(helpers.Sourced_either2Right(5)), 1)
-	expect("whenIsRightOtherwise Either2 (gauche)", helpers.Sourced_either2RightOrOtherwise(helpers.Sourced_either2Left(5)), -1)
+	expect("whenIsRightOtherwise, types mélangés (droite)", helpers.Sourced_either2RightOrOtherwise(helpers.Sourced_either2Right(5)), 1)
+	expect("whenIsRightOtherwise, types mélangés (gauche)", helpers.Sourced_either2RightOrOtherwise(helpers.Sourced_either2Left(5)), -1)
 
 	// matchInformation
 	expect("matchInformation(success)", helpers.Sourced_match(success), 110)
@@ -72,15 +72,15 @@ func main() {
 	expect("whenIsRight(fail): fail inchangé", failKept.Tag.Information(), "fail")
 
 	big := helpers.Sourced_whenRightIsBig(success)
-	expect("whenIsRight Either2 (succès): TagValue", big.Tag.Information(), "value")
-	expect("whenIsRight Either2 (succès): Right", big.Right, true)
+	expect("whenIsRight, types mélangés (succès): TagValue", big.Tag.Information(), "value")
+	expect("whenIsRight, types mélangés (succès): valeur", big.Value.(bool), true)
 
 	bigLeft := helpers.Sourced_whenRightIsBig(negative)
-	expect("whenIsRight Either2 (left): Left", bigLeft.Left, -3)
-	expect("whenIsRight Either2 (left): tag", bigLeft.Tag.Information(), "negative-operand")
+	expect("whenIsRight, types mélangés (left): valeur", bigLeft.Value.(float64), -3)
+	expect("whenIsRight, types mélangés (left): tag", bigLeft.Tag.Information(), "negative-operand")
 
 	failOnly := helpers.Sourced_whenRightIsBigFailOnly(helpers.Sourced_successOrFail(3))
-	expect("whenIsRight fail seul (succès): Value", failOnly.Value, false)
+	expect("whenIsRight fail seul (succès): Value", failOnly.Value.(bool), false)
 	expect("whenIsRight fail seul (succès): tag", failOnly.Tag.Information(), "value")
 	failOnlyFail := helpers.Sourced_whenRightIsBigFailOnly(helpers.Sourced_onlyFail())
 	expect("whenIsRight fail seul (fail): tag", failOnlyFail.Tag.Information(), "fail")

@@ -650,21 +650,34 @@ function inspectEitherFunction() {
 					binary(string(": "), "+", payloadText),
 				),
 			),
-			append(
-				"parts",
+			// La 4e clé (`…/success: null`) n'existe que pour les issues prédéfinies
+			// de DuploJS (`success`, `error`, `fail`), pas pour `left("x")` / `right("x")`.
+			ifStatement(
 				binary(
-					call(
-						identifier("quoteString"),
-						[
-							binary(
-								string("@duplojs/lang/kind/@DuplojsLangEither/"),
-								"+",
-								information,
-							),
-						],
+					binary(
+						binary(information, "==", string("success")),
+						"||",
+						binary(information, "==", string("error")),
 					),
-					"+",
-					string(": null"),
+					"||",
+					binary(information, "==", string("fail")),
+				),
+				append(
+					"parts",
+					binary(
+						call(
+							identifier("quoteString"),
+							[
+								binary(
+									string("@duplojs/lang/kind/@DuplojsLangEither/"),
+									"+",
+									information,
+								),
+							],
+						),
+						"+",
+						string(": null"),
+					),
 				),
 			),
 			returnStatement(

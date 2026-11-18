@@ -1,66 +1,42 @@
 import * as DArray from "@duplojs/lang/array";
-import * as DCommon from "@duplojs/lang/common";
 import * as DEither from "@duplojs/lang/either";
-import type { GoAST } from "@go";
+import { GoAST, GoPrinter } from "@go";
 import type { TsAST } from "@typescript";
 import type { Type } from "typescript/async";
 import type { BuildContext } from "../../../../context/build";
-import { typeTransformers } from "../../../type";
-import {
-	createEitherGoType,
-	resolveUnionVariants,
-	unwrapParenthesizedType,
-	type EitherGoValueType,
-	type EitherVariant,
-} from "./type";
+import { tsTypeToGo, type GoType } from "../../../type/tsTypeToGo";
+import { readEitherIssues, type EitherIssue } from "./issues";
+import { undefinedShardDependency } from "../../../../sharedDependency/defaults";
+import { eitherAnyTypeIdentifier, eitherCoreDependency } from "./sharedDependency";
 
-/** Forme Go d'une valeur Either, lue depuis son type TypeScript. */
+/** Une union d'Either vue comme la liste de ses issues (D-18). En Go : toujours `EitherAny`. */
 export interface EitherShape {
-	readonly goType: GoAST.GenericTypeReference;
-
-	/** `Either[T]` : une seule forme de valeur. `Either2[R, L]` : deux. */
-	readonly kind: "either" | "either2";
-
-	/** `T` pour `Either[T]`, `R` pour `Either2[R, L]`. */
-	readonly rightValueType: EitherGoValueType;
-
-	/** `T` pour `Either[T]`, `L` pour `Either2[R, L]`. */
-	readonly leftValueType: EitherGoValueType;
-	readonly variants: readonly EitherVariant[];
+	readonly issues: readonly EitherIssue[];
 }
 
-/** Type TS -> type Go, via les transformers de type. */
-export async function transformTsType(type: Type, enclosing: TsAST.Node, context: BuildContext) {
-	const typeNode = await context.transpilation.typeChecker.typeToTypeNode(type, enclosing);
+/** `shard_dependencies.EitherAny`, vu depuis un package source. */
+export function eitherAnyGoType(context: BuildContext): GoType {
+	return GoAST.createPackageTypeReference({
+		packageName: context.registerSharedDependency(eitherCoreDependency.value),
+		identifier: eitherAnyTypeIdentifier,
+	});
+}
 
-	if (!typeNode) {
-		return context.error(enclosing, "untranslatable-type");
-	}
-
-	const transformed = await DCommon.asyncPipe(
-		context.transform(typeNode, typeTransformers.value),
-		DEither.unwrapRight,
-	);
-
-	if (DEither.isLeft(transformed)) {
-		return transformed;
-	}
-
-	if (!DArray.lengthEqual(transformed.before, 0)) {
-		return context.error(enclosing, "un-support-before-on-type");
-	}
-
-	return DEither.success(transformed.result);
+/** Type TS -> type Go (couche centrale, D-18). */
+export function transformTsType(type: Type, enclosing: TsAST.Node, context: BuildContext) {
+	return tsTypeToGo(type, enclosing, context);
 }
 
 /** Type Go de l'expression `node`, d'après le checker. */
 export async function transformTypeOfNode(node: TsAST.Node, context: BuildContext) {
-	const type = await context.transpilation.typeChecker.getTypeAtLocation(node);
-
-	return transformTsType(type, node, context);
+	return tsTypeToGo(
+		await context.transpilation.typeChecker.getTypeAtLocation(node),
+		node,
+		context,
+	);
 }
 
-/** Lit la forme Either du type d'une expression ; erreur si ce n'est pas une union d'Either. */
+/** Lit les issues du type d'une expression ; erreur si ce n'est pas une union d'Either. */
 export async function analyzeEitherOfNode(node: TsAST.Node, context: BuildContext) {
 	return analyzeEitherOfType(
 		await context.transpilation.typeChecker.getTypeAtLocation(node),
@@ -70,48 +46,62 @@ export async function analyzeEitherOfNode(node: TsAST.Node, context: BuildContex
 }
 
 /**
- * Lit la forme Either d'un type TS. `node` sert de contexte au checker et aux
+ * Lit les issues d'un type TS. `node` sert de contexte au checker et aux
  * messages d'erreur (utile quand le type ne vient pas d'une expression, par
  * exemple le paramètre d'une forme curryfiée).
  */
 export async function analyzeEitherOfType(type: Type, node: TsAST.Node, context: BuildContext) {
-	const typeNode = await context.transpilation.typeChecker.typeToTypeNode(type, node);
+	const issues = await readEitherIssues(type, node, context);
 
-	if (!typeNode) {
-		return context.error(node, "untranslatable-type");
-	}
-
-	const variants = await DCommon.asyncPipe(
-		resolveUnionVariants(typeNode, context),
-		DEither.unwrapRight,
-	);
-
-	if (DEither.isLeft(variants)) {
-		return DEither.hasInformation(variants, "none")
+	if (DEither.isLeft(issues)) {
+		return DEither.hasInformation(issues, "none")
 			? context.error(node, "expected-either-value")
-			: variants;
+			: issues;
 	}
 
-	const goType = await DCommon.asyncPipe(
-		createEitherGoType(unwrapParenthesizedType(typeNode), variants, context),
-		DEither.unwrapRight,
-	);
+	return DEither.success<EitherShape>({ issues: DEither.unwrapRight(issues) });
+}
 
-	if (DEither.isLeft(goType)) {
-		return goType;
+/** Type Go de la valeur d'une issue (`JSUndefined` si elle n'en porte pas). */
+export async function issueValueGoType(issue: EitherIssue, node: TsAST.Node, context: BuildContext) {
+	if (issue.valueType === undefined) {
+		return DEither.right("go-type", GoAST.createPackageTypeReference({
+			packageName: context.registerSharedDependency(undefinedShardDependency.value),
+			identifier: GoAST.createIdentifier("JSUndefined"),
+		}) as GoType);
 	}
 
-	const [first, second] = goType.result.typeArguments;
+	return tsTypeToGo(issue.valueType, node, context);
+}
 
-	if (first === undefined) {
-		return context.error(node, "either-type-without-value-type");
+/**
+ * Type Go de la valeur lue sur un côté (`right` : ce que reçoit `onRight`).
+ * Un seul type Go pour toutes les issues de ce côté -> ce type ; sinon `any`.
+ */
+export async function sideValueGoType(
+	shape: EitherShape,
+	side: EitherIssue["side"],
+	node: TsAST.Node,
+	context: BuildContext,
+) {
+	const issues = DArray.filter(shape.issues, (issue) => issue.side === side);
+	const types: GoType[] = [];
+
+	for (const issue of issues) {
+		const goType = await issueValueGoType(issue, node, context);
+
+		if (DEither.isLeft(goType)) {
+			return goType;
+		}
+
+		const translated = DEither.unwrapRight(goType);
+
+		if (!DArray.some(types, (kept) => GoPrinter.renderNode(kept) === GoPrinter.renderNode(translated))) {
+			types.push(translated);
+		}
 	}
 
-	return DEither.success<EitherShape>({
-		goType: goType.result,
-		kind: second === undefined ? "either" : "either2",
-		rightValueType: first,
-		leftValueType: second ?? first,
-		variants,
-	});
+	const single = types.length === 1 ? DArray.first(types) : undefined;
+
+	return DEither.right("go-type", single ?? (GoAST.builtinTypeReferences.any as GoType));
 }
