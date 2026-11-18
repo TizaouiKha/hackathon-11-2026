@@ -257,6 +257,83 @@ func(input shard_dependencies.Either[float64]) shard_dependencies.Either[float64
 
 ### D-15 · Organisation du travail — ✅
 - Les étapes, leurs dépendances et la répartition sont dans [ETAPES.md](ETAPES.md). Chacun s'inscrit sur une étape avant de la commencer.
+- **Les PR s'ouvrent sur le fork, jamais sur le dépôt `duplojs`** (ajout du 18/11/2026). Sur un fork, `gh pr create` vise par défaut le dépôt **d'origine**, celui des organisateurs. Il faut toujours préciser le dépôt :
+  ```bash
+  gh pr create --repo TizaouiKha/hackathon-11-2026 --base main --head <ma-branche>
+  ```
+
+---
+
+## Revues de code
+
+Les remarques de relecture des PR, pour ne pas les perdre. Statuts : 🔴 à corriger avant le merge · 🟡 à traiter plus tard · ✅ traité.
+
+### R-01 · Étape 5 — helper de préparation (Yacine, branche `etape-5-helper-preparation`) — relue le 18/11/2026
+**Verdict : bon travail, à merger** une fois la PR déplacée sur le fork.
+
+**Ce qui a été vérifié** (sur une branche locale qui réunit l'étape 5 et le `main` du 18/11, rien n'a été poussé) :
+- le merge avec `main` (étapes 3, 7 et 8a) se fait **sans conflit**, alors que la branche part d'avant l'étape 8a ;
+- **tous les tests passent** : `tests/preparation/` (le sien), `tests/either/`, `tests/either-helpers/`, `tests/pipe/`, `check.sh 00`, `test:types`, et `test:lint` sans avertissement ;
+- le Go généré est plus lisible : `Value: Sourced_one + Sourced_two`, sans les 2 variables temporaires d'avant ;
+- `&&` et `||` n'évaluent leur partie droite que si nécessaire. Le test le prouve avec un tag invalide qui planterait sinon ;
+- `x / 0` passe par une variable, parce que Go refuse de compiler une division par la constante 0 ;
+- **contrôle ajouté pendant la revue** : les opérations entre deux littéraux sont maintenant calculées par Go **à la compilation** (`float64(0.1) + float64(0.2)`). Le résultat est identique à JavaScript sur 6 cas : `0.1 + 0.2`, `0.1 * 3`, `1 / 3`, `0.7 + 0.1`, `1e16 + 1`, `5e-324 / 2`. Pas de différence de calcul.
+
+**Remarques :**
+1. 🔴 **PR ouverte sur le mauvais dépôt** : elle est sur [duplojs/hackathon-11-2026#5](https://github.com/duplojs/hackathon-11-2026/pull/5), le dépôt des organisateurs. Il faut la fermer et la rouvrir sur le fork (commande dans D-15). Sinon, elle ne peut pas être mergée dans notre `main`.
+2. 🟡 **Ordre d'évaluation avec les variables.** `transformPrepared` ne copie plus les identifiants dans une variable temporaire. Si un argument **suivant** modifie la variable, Go lira la nouvelle valeur alors que JavaScript lit l'ancienne :
+   ```ts
+   f(x, change())   // change() modifie x : TS passe l'ancien x, le Go généré le nouveau
+   ```
+   Ce n'est **pas possible aujourd'hui** : aucun transformer ne traduit encore d'affectation, et aucun exercice ne modifie de variable. Ça le deviendra avec les affectations de l'étape 6. **Correction proposée** : quand un opérand suivant a des instructions de préparation (`before` non vide), copier dans une variable les identifiants déjà préparés avant lui. C'est la règle du skill `typescript-to-go` : « conserver la valeur de chaque expression dans une déclaration locale avant de poursuivre l'évaluation suivante ».
+3. 🟡 **Cohérence du contrat.** `transformPrepared` renvoie un objet simple `{ before, operand }` en cas de succès, alors que le reste du transpileur renvoie des résultats `DEither` (`context.success(...)`, `DEither.isLeft`). Ça fonctionne, mais un `DEither.right("prepared-operand", { before, operand })` serait plus cohérent avec D-04. Ce n'est pas bloquant.
+4. ✅ **(corrigé, voir plus bas)** **À garder en tête pour l'étape 6** : `&&` et `||` sont traduits avec un résultat `bool`. En JavaScript, `a || b` renvoie **la valeur** de `a` ou de `b` (par exemple `0 || 5` vaut `5`). Les exercices n'utilisent `||` qu'entre des booléens (`one < 0 || two < 0`), donc c'est sans effet pour l'instant.
+
+#### Revue adversariale (18/11/2026)
+**But** : essayer de **casser** l'étape 5 avec des entrées TypeScript piégeuses. Chaque piège est transpilé dans son propre mini-projet, compilé, exécuté, puis comparé au **même code exécuté en JavaScript**. La base testée est l'étape 5 + `main` du 18/11.
+
+**Résultat : l'étape 5 tient. 25 pièges sur 29 donnent la même valeur qu'en JavaScript, et les 4 qui échouent viennent d'un code qui existait avant elle.**
+
+| Piège (TS) | JS | Go | |
+|---|---|---|---|
+| `1e308 * 10`, `1e308 + 1e308`, `1e308 + 1e308 + 1` | `Infinity` | `+Inf` | ✅ le dépassement est détecté et calculé à l'exécution |
+| `1e-320 * 1e-10`, `1e-400` | `0` | `0` | ✅ |
+| `0 / 0`, `x / 0`, `x / 0e5`, `x / 0 / 0` | `NaN`, `±Infinity` | idem | ✅ pas d'erreur Go « division by zero » |
+| `0 / 0 === 0 / 0` | `false` | `false` | ✅ |
+| `0 / x === 0` (x = -5, donne `-0`) | `true` | `true` | ✅ |
+| `0.1 + 0.2 === 0.3`, `0.1 + 0.2 + 0.3`, `0.1 * 0.1`, `1 / 3 * 3` | `false`, `0.6000000000000001`, `0.010000000000000002`, `1` | idem | ✅ les calculs entre littéraux faits par Go sont identiques à JavaScript |
+| `0x10 + 0b11`, `1_000 + 0.5`, `9007199254740993 + 0` | `19`, `1000.5`, `9007199254740992` | idem | ✅ |
+| `isPositive(x) && isBig(x)`, `||`, et le mélange `isBig(x) \|\| isPositive(x) && isBig(add(x, 10))` | | idem | ✅ chaque appel n'est évalué que si nécessaire, même imbriqué |
+| `add(add(x, 1), add(2, add(x, 3)))` | `8` | `8` | ✅ |
+| **`1e400`** (littéral seul) | `Infinity` | ❌ `undefined: Infinity` | **bug d'avant l'étape 5** : TypeScript donne le texte `"Infinity"` pour ce littéral, et `numericLiteral.ts` le recopie tel quel en Go |
+| **`x % 2`** | `1` | ❌ ne compile pas | **d'avant l'étape 5** : Go n'a pas de `%` sur les `float64` (il faut `math.Mod`) |
+| **`x << 1`** (et `&`, `\|`, `^`, `>>`) | `6` | ❌ ne compile pas | **d'avant l'étape 5** : les opérateurs binaires de JS s'appliquent à des entiers 32 bits, et Go les refuse sur les `float64` |
+| **`x \|\| y`** avec `y: number` | `5` | ❌ refusé à la transpilation | **d'avant l'étape 5** : voir la remarque 4 |
+
+**Remarque sur l'ordre d'évaluation (n° 2)** : le problème reste réel, mais il est **impossible à déclencher aujourd'hui**. Sans affectation, aucun argument ne peut modifier une variable lue avant lui. À corriger en même temps que les affectations (étape 6).
+
+**Nouveaux points** (sans lien avec l'étape 5, aucun exercice concerné) :
+- ✅ **`numericLiteral.ts`** : traduire un littéral qui vaut `Infinity` (`1e400`) en `math.Inf(1)`.
+- ✅ **`binary.ts`** : `%` doit devenir `math.Mod(a, b)`. `<<`, `>>`, `&`, `|` et `^` doivent passer par une conversion en entier 32 bits, comme JavaScript.
+
+#### Correction des 4 bugs (18/11/2026, commit `21a51b0` sur `etape-5-helper-preparation`)
+Les 4 échecs de la revue adversariale sont corrigés **sur la branche de l'étape 5**. C'est là que `binary.ts` a été réécrit, ce qui évite les conflits.
+
+| Bug | Correction | Fichier |
+|---|---|---|
+| `1e400` donne `undefined: Infinity` | un littéral qui vaut `Infinity` devient `math.Inf(1)` (avec `import "math"` dans le fichier) | `expression/numericLiteral.ts` |
+| `x % y` ne compile pas | `math.Mod(x, y)` : même règle de signe (celui du dividende) et de `NaN` que JavaScript | `expression/binary.ts` |
+| `&`, `\|`, `^`, `<<`, `>>`, `>>>` ne compilent pas | helpers partagés `JSBitwiseAnd`, `JSBitwiseOr`, `JSBitwiseXor`, `JSLeftShift`, `JSSignedRightShift`, `JSUnsignedRightShift` qui appliquent **ToInt32 / ToUint32** comme JavaScript (troncature, modulo 2³², `NaN` et `Infinity` donnent 0, décalage `& 31`) | `expression/javascriptNumber.ts` |
+| `x \|\| y` entre nombres | renvoie **la valeur** d'un opérande comme JavaScript (`0 \|\| 5` donne `5`, `NaN && 5` donne `NaN`) ; le membre droit n'est évalué que si nécessaire. Entre booléens, rien ne change. Avec des types mélangés (`boolean \|\| number`), le refus est explicite, car aucun type Go ne représente `number \| true` | `expression/binary.ts` |
+
+**Bonus trouvé en corrigeant** : si deux helpers partagés importaient le même paquet (`math` pour `JSNumberToString` et pour les opérateurs sur les bits), le fichier `shard_dependencies.go` contenait l'import **deux fois** et ne compilait pas. Les imports sont maintenant dédupliqués dans `build.ts`.
+
+**Vérifié** :
+- `tests/js-operators/` : **56 contrôles bit pour bit** contre les valeurs de Node, par exemple `-0 % 5` donne `-0`, `1e21 \| 0` donne `-559939584`, `1 << 33` donne `2`, `-1 >>> 0` donne `4294967295`, et `NaN && 5` donne `NaN` ;
+- sur la branche de l'étape 5 : tous les tests, `check 00`, les types et le lint (0 avertissement) ;
+- **intégration** (branche locale « étape 5 + `main` + `DString.to` ») : les 7 tests d'exécution passent, et un programme qui utilise `DString.to`, `|` et `%` ensemble compile avec un seul `import "math"`.
+
+La remarque 4 est donc traitée : `&&` / `||` entre nombres renvoient bien une valeur. Les remarques 2 (ordre d'évaluation) et 3 (contrat `DEither`) restent 🟡 pour plus tard.
 
 ---
 
