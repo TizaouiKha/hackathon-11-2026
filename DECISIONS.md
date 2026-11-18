@@ -347,7 +347,7 @@ Les types calculés (`Extract`, `ReturnType`…) n'ont pas besoin de règle : le
 **Pas encore fait (phases 2 à 4)** :
 - ~~la lecture typée lors du narrowing~~ (D-18.2) ;
 - ~~`unwrapRight`, `isLeft`~~ (D-18.2) ;
-- les tableaux, objets, tuples, fonctions et `Promise` ;
+- ~~les tableaux, objets, tuples, fonctions et `Promise`~~ (D-18.3) ;
 - `JSStringLength`.
 
 #### D-18.2 · Phase 2 faite — ✅ (18/11/2026, branche `d18-phase2-narrowing`)
@@ -381,6 +381,30 @@ Passé comme fonction (`pipe(x, DEither.unwrapRight)`), il devient une fonction 
 **Vérifié** : `tests/narrowing/` (12 contrôles, valeurs attendues obtenues avec `tsx`), les 7 autres tests d'exécution, `check.sh 00`, les types et le lint.
 
 **Limite** : la lecture après narrowing (`EitherAny` → `x.Value.(T)`) est implémentée, mais aucun test ne l'exerce encore. Sans `if`, `const` ni ternaire (étape 6), on ne peut pas écrire de narrowing transpilable : `isLeft(x) || f(x)` donne `true | number`, qui n'a pas de traduction Go simple. Un test sera ajouté dès que l'étape 6 apporte le `if`.
+
+#### D-18.3 · Phase 3 faite — ✅ (18/11/2026, branche `d18-phase3-types`)
+
+`tsTypeToGo` traduit maintenant les types composés. Seule la **traduction des types** est faite ici : les expressions (`[1, 2]`, `{ name }`, `value.name`, fonctions fléchées) restent à l'étape 6, qui s'appuiera sur ces types.
+
+| TypeScript | Go |
+|---|---|
+| `T[]`, `readonly T[]` | `[]T` |
+| tuple `[A, B]` | `[2]T` si les éléments ont un seul type Go, sinon `struct{ V0 A; V1 B }` |
+| objet `{ name: string }` | struct anonyme `struct{ Sourced_name string }` |
+| `Record<string, T>`, `{ [key: string]: T }` | `map[string]T` (`map[float64]T` pour une clé `number`) |
+| fonction `(a: A, ...rest: B[]) => R` | `func(A, ...B) R` ; `void` : pas de retour |
+| `Promise<T>` | `T` (D-11) |
+| paramètre de type `T` non résolu | `any` |
+
+**Choix.**
+- **Noms des champs** : `createSourceIdentifier` (`Sourced_name`), comme les autres identifiants venus de la source. Le champ est exporté, et un nom TS qui n'est pas un identifiant Go valide est échappé de la même façon.
+- **Structs anonymes** : Go traite deux structs anonymes de même forme comme le même type, ce qui correspond au typage structurel de TS. Vérifié : une valeur construite côté Go traverse la fonction transpilée et reste `==`.
+- **Types récursifs** (`interface Node { next: Node }`) : erreur claire `recursive-type-not-supported-yet`, au lieu d'une boucle infinie. Il faudrait un type nommé (`type Node struct { Next *Node }`) ; ce sera fait si un projet en a besoin.
+- **Refusés pour l'instant**, avec une erreur claire : fonctions surchargées, objets à la fois appelables et porteurs de propriétés, objets avec à la fois des propriétés et une signature d'index.
+
+**Effet sur la phase 2** : les types de fonction sont maintenant traduisibles, donc l'adaptateur voit les fonctions comme des types concrets ; il ne les modifie pas (produit et cible de même nature).
+
+**Vérifié** : `tests/composite-types/` (17 contrôles : signatures lues par réflexion, allers-retours d'objet, de tuple et de map, callback appelé, `Success<number[]>`), les 8 autres tests d'exécution, `check.sh 00`, les types, le lint, et l'erreur sur un type récursif.
 
 ### D-11 · Asynchrone (projet 10) — 🟡
 - Il n'y a aucune vraie entrée/sortie, donc une **exécution synchrone** (`Promise<T>` traduit en `T`) préserve l'ordre et le résultat.
