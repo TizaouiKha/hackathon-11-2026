@@ -235,9 +235,17 @@ func(input shard_dependencies.Either[float64]) shard_dependencies.Either[float64
 - Il n'y a aucune vraie entrée/sortie, donc une **exécution synchrone** (`Promise<T>` traduit en `T`) préserve l'ordre et le résultat.
 - Goroutines et channels seulement en bonus, si on a le temps.
 
-### D-12 · Rendu des nombres en chaîne — 🟡
+### D-12 · Rendu des nombres en chaîne — ✅ (18/11/2026, branche `etape-8b-dstring-to`)
 - `DString.to(3)` doit donner `"3"` comme en JS, pas `"3.000000"`.
-- Prévoir une shared dependency fidèle au formatage JS : `strconv.FormatFloat(f, 'f', -1, 64)` couvre les cas courants, à vérifier sur les exposants et `NaN`.
+- ~~`strconv.FormatFloat(f, 'f', -1, 64)` couvre les cas courants.~~ Ce n'est **pas suffisant** : JavaScript passe en notation exponentielle à partir de `1e21` et en dessous de `1e-6` (`1e+21`, `1e-7`), et écrit `NaN`, `Infinity` et `0` pour `-0`.
+- **Choix** : la shared dependency `JSNumberToString(float64) string` (`duplojs/string/to/sharedDependency.ts`) suit **pas à pas l'algorithme de la spécification ECMAScript** (« Number::toString »). Elle part des chiffres les plus courts que donne `strconv.FormatFloat(value, 'e', -1, 64)`, la même règle que JavaScript, puis place la virgule ou l'exposant selon les mêmes seuils.
+- **Vérifié** (`tests/js-number-to-string/`) : **2 034 nombres** comparés à `String(x)` de Node, sans écart. Ce sont 34 cas limites (`0.30000000000000004`, `1e+21`, `1e-7`, `5e-324`, `-0`, `NaN`, `±Infinity`, `2**53`…) et 2 000 `float64` aléatoires tirés sur tous les bits, avec une graine fixe.
+- **`DString.to`** (`duplojs/string/`) :
+  - appelée : `DString.to(n)` devient `shard_dependencies.JSNumberToString(n)` ;
+  - passée comme fonction (`DArray.map(DString.to)`, `success: DString.to`) : elle devient `shard_dependencies.JSNumberToString`, de type `func(float64) string`.
+
+  Seuls les nombres sont traduits (le seul usage des exercices) ; les autres types renvoient une erreur claire.
+- **Pour `print` (étape 4)** : réutiliser `JSNumberToString` pour afficher les nombres, puisque `util.inspect` les écrit comme `String(x)`.
 
 ### D-13 · `print` = format `util.inspect` de Node, pas du JSON — ✅ (constat, 17/11/2026)
 - `DCommon.print(x)` appelle `console.info(x)` (source : `@duplojs/lang/dist/common/print.mjs`). Node formate donc avec `util.inspect`.

@@ -21,7 +21,7 @@ Chaque étape indique : **le but**, **ce qu'il faut avoir lu**, **ce qu'il faut 
 | 5 | [Helper de préparation](#étape-5--helper-de-préparation) | — | | ⬜ |
 | 6 | [Transformers de base du langage](#étape-6--transformers-de-base-du-langage) | 5 | | ⬜ |
 | 7 | [Domaine Either (handlers)](#étape-7--domaine-either) | 3, 5 | Claude | 🟨 presque fini (branche `etape-7-either-helpers`) : il reste `group` (attend les types tableau, étape 6) |
-| 8 | [Domaines Common / Array / String](#étape-8--domaines-common--array--string) | 4, 5 | Claude (8a) | 🟨 8a fait (branche `etape-8a-pipe`) : `pipe` et formes curryfiées. 8b (`print`, `map`, `coalescing`, `DString.to`) attend les étapes 4 et 6 |
+| 8 | [Domaines Common / Array / String](#étape-8--domaines-common--array--string) | 4, 5 | Claude | 🟨 8a fait (`pipe`, formes curryfiées) ; 8b : `DString.to` fait (branche `etape-8b-dstring-to`), `print`, `map` et `coalescing` attendent les étapes 4 et 6 |
 | 9 | [Valider les projets 01 → 09](#étape-9--valider-les-projets-01--09) | 6, 7, 8 | tout le monde | ⬜ |
 | 10 | [Projet 10 (asynchrone)](#étape-10--projet-10-asynchrone) | 9 | | ⬜ |
 | 11 | [Performance et finitions](#étape-11--performance-et-finitions) | 9 | | ⬜ |
@@ -123,6 +123,7 @@ tests/<nom>/
 - Le script transpile le dossier, copie `check/` dans `dist/`, puis lance `go vet` et `go run ./check`.
 - `check/main.go` importe le package transpilé (par exemple `shapes "duplojs.local/transpiled/shapes.ts"`) et appelle les fonctions sous leur nom Go (`shapes.Sourced_maFonction(...)`). Il doit **sortir avec un code d'erreur** si un contrôle échoue (`os.Exit(1)`).
 - Exemple complet : `tests/either/` (étape 3), avec 21 contrôles.
+- **Variante « générateur »** : si le dossier contient un `check.ts` (et pas de `check/main.go`), le script le lance seul avec `tsx`. Il génère et exécute lui-même son Go, ce qui permet de tester une **shared dependency** sans TypeScript à transpiler. Exemple : `tests/js-number-to-string/` imprime le helper Go tel que le transpileur le génère, puis le compare à `String(x)` de Node sur 2 034 nombres.
 
 ---
 
@@ -212,7 +213,7 @@ Les règles à reproduire :
 **À faire** :
 1. Écrire en Go une fonction `Inspect(v any) string` qui parcourt la valeur avec `reflect`. Elle utilise les **tags de struct** pour connaître le nom des clés (le code de départ met déjà les clés DuploJS dans des tags `json:"..."`).
 2. Écrire `Print(v any)`, qui applique la règle de la chaîne seule et affiche le résultat.
-3. Formatage des nombres : `strconv.FormatFloat(f, 'f', -1, 64)` pour les cas courants. Vérifier les cas limites : très grands nombres, `NaN`, `-0`.
+3. Formatage des nombres : **déjà fait**. Réutiliser `shard_dependencies.JSNumberToString(f)` (D-12, `duplojs/string/to/sharedDependency.ts`). Il est identique à `String(x)` de Node, et testé sur 2 034 nombres. Il suffit d'enregistrer `jsNumberToStringDependency` avec `context.registerSharedDependency`.
 4. En faire une shared dependency.
 5. Tester avec des petits programmes Go qui affichent les sorties de référence de chaque projet (voir `EXERCICES.md`).
 
@@ -329,10 +330,16 @@ Chaque fonction devient un **helper Go générique écrit une fois à la main** 
 > - **le routeur `duplojs/common/`** est créé. ⚠️ **Pour la personne de l'étape 4** : `print` doit s'y brancher. Il suffit d'ajouter un `DPattern.match(DCommon.equal("print"), …)` dans `src/transpiler/transformers/duplojs/common/index.ts` et le handler dans `common/print/`. Ne pas créer un second routeur ;
 > - **vérifié** : `tests/pipe/` (15 contrôles, valeurs calculées avec le vrai DuploJS), et tous les autres tests.
 >
-> **8b — à faire** quand les étapes 4 et 6 seront mergées :
-> - `DCommon.print` : brancher le `Inspect` de l'étape 4 ;
-> - `DArray.map` et `DArray.coalescing` : ils ont besoin des types tableau (`number[]`) et des fonctions fléchées (étape 6). La forme curryfiée de `map` suivra le modèle de D-17 (`either/core/operand.ts`) ;
-> - `DString.to` : il a besoin du type `string` (étape 6).
+> **8b — en cours** :
+> - ✅ **`DString.to`** (branche `etape-8b-dstring-to`, D-12) :
+>   - le helper Go `JSNumberToString` est identique à `String(x)` de Node (2 034 nombres testés) ;
+>   - le routeur `duplojs/string/` est créé ;
+>   - les formes appelée et passée comme fonction sont traduites ;
+>   - `tests/dstring-to/` vérifie `DString.to(a) === DString.to(b)` de bout en bout.
+>
+>   Reste à vérifier quand le type `string` de l'étape 6 existera : une fonction qui **renvoie** le texte, et la forme passée à `map` ou `whenIsRightOtherwise`.
+> - ⬜ `DCommon.print` : brancher le `Inspect` de l'étape 4 ;
+> - ⬜ `DArray.map` et `DArray.coalescing` : ils ont besoin des types tableau (`number[]`) et des fonctions fléchées (étape 6). La forme curryfiée de `map` suivra le modèle de D-17 (`either/core/operand.ts`).
 
 **But** : traduire `pipe`, `print`, `DArray.map`, `DArray.coalescing` et `DString.to`.
 
