@@ -289,6 +289,33 @@ Les remarques de relecture des PR, pour ne pas les perdre. Statuts : 🔴 à cor
 3. 🟡 **Cohérence du contrat.** `transformPrepared` renvoie un objet simple `{ before, operand }` en cas de succès, alors que le reste du transpileur renvoie des résultats `DEither` (`context.success(...)`, `DEither.isLeft`). Ça fonctionne, mais un `DEither.right("prepared-operand", { before, operand })` serait plus cohérent avec D-04. Ce n'est pas bloquant.
 4. 🟡 **À garder en tête pour l'étape 6** : `&&` et `||` sont traduits avec un résultat `bool`. En JavaScript, `a || b` renvoie **la valeur** de `a` ou de `b` (par exemple `0 || 5` vaut `5`). Les exercices n'utilisent `||` qu'entre des booléens (`one < 0 || two < 0`), donc c'est sans effet pour l'instant.
 
+#### Revue adversariale (18/11/2026)
+**But** : essayer de **casser** l'étape 5 avec des entrées TypeScript piégeuses. Chaque piège est transpilé dans son propre mini-projet, compilé, exécuté, puis comparé au **même code exécuté en JavaScript**. La base testée est l'étape 5 + `main` du 18/11.
+
+**Résultat : l'étape 5 tient. 25 pièges sur 29 donnent la même valeur qu'en JavaScript, et les 4 qui échouent viennent d'un code qui existait avant elle.**
+
+| Piège (TS) | JS | Go | |
+|---|---|---|---|
+| `1e308 * 10`, `1e308 + 1e308`, `1e308 + 1e308 + 1` | `Infinity` | `+Inf` | ✅ le dépassement est détecté et calculé à l'exécution |
+| `1e-320 * 1e-10`, `1e-400` | `0` | `0` | ✅ |
+| `0 / 0`, `x / 0`, `x / 0e5`, `x / 0 / 0` | `NaN`, `±Infinity` | idem | ✅ pas d'erreur Go « division by zero » |
+| `0 / 0 === 0 / 0` | `false` | `false` | ✅ |
+| `0 / x === 0` (x = -5, donne `-0`) | `true` | `true` | ✅ |
+| `0.1 + 0.2 === 0.3`, `0.1 + 0.2 + 0.3`, `0.1 * 0.1`, `1 / 3 * 3` | `false`, `0.6000000000000001`, `0.010000000000000002`, `1` | idem | ✅ les calculs entre littéraux faits par Go sont identiques à JavaScript |
+| `0x10 + 0b11`, `1_000 + 0.5`, `9007199254740993 + 0` | `19`, `1000.5`, `9007199254740992` | idem | ✅ |
+| `isPositive(x) && isBig(x)`, `||`, et le mélange `isBig(x) \|\| isPositive(x) && isBig(add(x, 10))` | | idem | ✅ chaque appel n'est évalué que si nécessaire, même imbriqué |
+| `add(add(x, 1), add(2, add(x, 3)))` | `8` | `8` | ✅ |
+| **`1e400`** (littéral seul) | `Infinity` | ❌ `undefined: Infinity` | **bug d'avant l'étape 5** : TypeScript donne le texte `"Infinity"` pour ce littéral, et `numericLiteral.ts` le recopie tel quel en Go |
+| **`x % 2`** | `1` | ❌ ne compile pas | **d'avant l'étape 5** : Go n'a pas de `%` sur les `float64` (il faut `math.Mod`) |
+| **`x << 1`** (et `&`, `\|`, `^`, `>>`) | `6` | ❌ ne compile pas | **d'avant l'étape 5** : les opérateurs binaires de JS s'appliquent à des entiers 32 bits, et Go les refuse sur les `float64` |
+| **`x \|\| y`** avec `y: number` | `5` | ❌ refusé à la transpilation | **d'avant l'étape 5** : voir la remarque 4 |
+
+**Remarque sur l'ordre d'évaluation (n° 2)** : le problème reste réel, mais il est **impossible à déclencher aujourd'hui**. Sans affectation, aucun argument ne peut modifier une variable lue avant lui. À corriger en même temps que les affectations (étape 6).
+
+**Nouveaux points pour plus tard** (sans lien avec l'étape 5, aucun exercice concerné) :
+- 🟡 **`numericLiteral.ts`** : traduire un littéral qui vaut `Infinity` (`1e400`) en `math.Inf(1)`, ou le refuser avec une erreur claire.
+- 🟡 **`binary.ts`** : `%` doit devenir `math.Mod(a, b)`. `<<`, `>>`, `&`, `|` et `^` doivent passer par une conversion en entier 32 bits, comme JavaScript, ou être refusés explicitement plutôt que de produire du Go qui ne compile pas.
+
 ---
 
 ## Bugs connus du code de départ
