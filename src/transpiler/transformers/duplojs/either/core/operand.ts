@@ -86,12 +86,28 @@ export async function translateCurried(
 	operation: EitherOperation,
 	context: BuildContext,
 ): Promise<EitherOperationResult> {
+	return translateFunctionValue(
+		call,
+		await context.transpilation.typeChecker.getTypeAtLocation(call),
+		operation,
+		context,
+	);
+}
+
+/**
+ * Une opération utilisée **comme fonction** (`pipe(x, DEither.unwrapRight)`) :
+ * même fonction Go littérale que la forme curryfiée, typée par `functionType`
+ * (le type attendu par le contexte, la signature générique n'étant pas instanciée).
+ */
+export async function translateFunctionValue(
+	call: TsAST.Expression,
+	functionType: Type,
+	operation: EitherOperation,
+	context: BuildContext,
+): Promise<EitherOperationResult> {
 	const { typeChecker } = context.transpilation;
 	const signature = DArray.first(
-		await typeChecker.getSignaturesOfType(
-			await typeChecker.getTypeAtLocation(call),
-			SignatureKind.Call,
-		),
+		await typeChecker.getSignaturesOfType(functionType, SignatureKind.Call),
 	);
 	const parameter = signature && DArray.first(await signature.getParameters());
 

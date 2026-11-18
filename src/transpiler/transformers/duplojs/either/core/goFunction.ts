@@ -88,6 +88,14 @@ export function isRightCall(input: GoAST.Expression) {
 	);
 }
 
+/** `input.Tag.IsLeft()` */
+export function isLeftCall(input: GoAST.Expression) {
+	return call(
+		select(select(input, eitherFieldIdentifiers.tag), GoAST.createIdentifier("IsLeft")),
+		[],
+	);
+}
+
 export interface GenericFunctionParams {
 	readonly name: GoAST.Identifier;
 	readonly generic: readonly GoAST.Identifier[];
