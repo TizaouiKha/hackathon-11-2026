@@ -345,10 +345,42 @@ Les types calculés (`Extract`, `ReturnType`…) n'ont pas besoin de règle : le
 - les 6 autres tests d'exécution, mis à jour pour `EitherAny`, `check.sh 00`, les types et le lint (0 avertissement).
 
 **Pas encore fait (phases 2 à 4)** :
-- la lecture typée lors du narrowing (`if (isLeft(x)) return x;` puis `x` utilisé comme `string`) ;
-- `unwrapRight`, `isLeft` ;
+- ~~la lecture typée lors du narrowing~~ (D-18.2) ;
+- ~~`unwrapRight`, `isLeft`~~ (D-18.2) ;
 - les tableaux, objets, tuples, fonctions et `Promise` ;
 - `JSStringLength`.
+
+#### D-18.2 · Phase 2 faite — ✅ (18/11/2026, branche `d18-phase2-narrowing`)
+
+**Adaptation centrale des expressions** (`expression/adapt.ts`). Toute expression passe par `expressionTransformers`, qui enveloppe désormais les transformeurs bruts (`rawExpressionTransformers`). Pour chaque expression, on compare trois types connus de TypeScript :
+- **produit** : ce que le Go de l'expression fabrique vraiment. Pour un identifiant, c'est le type **déclaré** de la variable (`value: string | Fail` reste un `EitherAny` en Go, même là où TS l'a rétréci) ; sinon, le type au point ;
+- **rétréci** : `getTypeAtLocation` (après `isLeft`, `if`, `||`…) ;
+- **attendu** : `getContextualType` (paramètre appelé, type de retour).
+
+La cible est le type attendu s'il est concret ou Either, sinon le type rétréci.
+
+| produit | cible | Go |
+|---|---|---|
+| `EitherAny` | concret `T` | `x.Value.(T)` |
+| `EitherAny` | `any` | `x.Value` |
+| `any` | concret `T` | `x.(T)` |
+| brut | `EitherAny` | `EitherAny{Tag: TagValue, Value: x}` (D-16) |
+
+Dans les autres cas, ou si un des types n'est pas encore traduisible (fonction, générique), l'expression est gardée telle quelle. Le sondage des types passe par un contexte « silencieux » qui n'ajoute pas d'import : un import Go inutilisé ne compile pas.
+
+**`isLeft`** : `x.Tag.IsLeft()`, avec une table `eitherTagIsLeft` remplie pour les tags left. `TagValue` n'est ni right ni left, comme dans DuploJS.
+
+**`unwrapRight`**, choisi d'après le type du résultat donné par TypeScript :
+- entrée sans Either : renvoyée telle quelle ;
+- résultat sans Either (que des issues right) : `x.Value.(T)` ;
+- résultat `any` : `x.Value` ;
+- résultat encore union d'Either (`number | Fail`) : helper `UnwrapRight(input EitherAny) EitherAny` (la valeur extraite devient `TagValue`).
+
+Passé comme fonction (`pipe(x, DEither.unwrapRight)`), il devient une fonction Go littérale typée par le type **attendu** (la signature générique n'est pas instanciée). `translateCurried` et cette forme partagent `translateFunctionValue` (`either/core/operand.ts`).
+
+**Vérifié** : `tests/narrowing/` (12 contrôles, valeurs attendues obtenues avec `tsx`), les 7 autres tests d'exécution, `check.sh 00`, les types et le lint.
+
+**Limite** : la lecture après narrowing (`EitherAny` → `x.Value.(T)`) est implémentée, mais aucun test ne l'exerce encore. Sans `if`, `const` ni ternaire (étape 6), on ne peut pas écrire de narrowing transpilable : `isLeft(x) || f(x)` donne `true | number`, qui n'a pas de traduction Go simple. Un test sera ajouté dès que l'étape 6 apporte le `if`.
 
 ### D-11 · Asynchrone (projet 10) — 🟡
 - Il n'y a aucune vraie entrée/sortie, donc une **exécution synchrone** (`Promise<T>` traduit en `T`) préserve l'ordre et le résultat.

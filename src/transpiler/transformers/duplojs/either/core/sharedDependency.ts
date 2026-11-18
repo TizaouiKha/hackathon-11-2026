@@ -8,8 +8,10 @@ import { createSharedDependency } from "@transformer";
  * ```go
  * type EitherTag uint8
  * var eitherTagIsRight [256]bool
+ * var eitherTagIsLeft [256]bool
  * var eitherTagInformation [256]string
  * func (tag EitherTag) IsRight() bool
+ * func (tag EitherTag) IsLeft() bool // TagValue : ni right ni left
  * func (tag EitherTag) Information() string
  * func (tag EitherTag) String() string
  * // Une seule représentation pour toutes les unions d'Either, quel que soit
@@ -25,6 +27,7 @@ export const eitherTagTypeIdentifier = GoAST.createIdentifier("EitherTag");
 export const eitherAnyTypeIdentifier = GoAST.createIdentifier("EitherAny");
 
 export const eitherTagIsRightTableIdentifier = GoAST.createIdentifier("eitherTagIsRight");
+export const eitherTagIsLeftTableIdentifier = GoAST.createIdentifier("eitherTagIsLeft");
 export const eitherTagInformationTableIdentifier = GoAST.createIdentifier("eitherTagInformation");
 
 export const eitherFieldIdentifiers = {
@@ -90,8 +93,10 @@ export const eitherCoreDependency = DCommon.memo(() => {
 				type: GoAST.builtinTypeReferences.uint8,
 			}),
 			createTagTable(eitherTagIsRightTableIdentifier, GoAST.builtinTypeReferences.bool),
+			createTagTable(eitherTagIsLeftTableIdentifier, GoAST.builtinTypeReferences.bool),
 			createTagTable(eitherTagInformationTableIdentifier, GoAST.builtinTypeReferences.string),
 			createTagMethod("IsRight", GoAST.builtinTypeReferences.bool, eitherTagIsRightTableIdentifier),
+			createTagMethod("IsLeft", GoAST.builtinTypeReferences.bool, eitherTagIsLeftTableIdentifier),
 			createTagMethod("Information", GoAST.builtinTypeReferences.string, eitherTagInformationTableIdentifier),
 			createTagMethod("String", GoAST.builtinTypeReferences.string, eitherTagInformationTableIdentifier),
 			GoAST.createTypeDefinition({

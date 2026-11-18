@@ -9,6 +9,8 @@ import { failExpressionHandler } from "./fail";
 import { leftExpressionHandler, rightExpressionHandler } from "./left";
 import { errorExpressionHandler } from "./error";
 import { isRightExpressionHandler } from "./isRight";
+import { isLeftExpressionHandler } from "./isLeft";
+import { unwrapRightExpressionHandler } from "./unwrapRight";
 import { whenIsRightOtherwiseExpressionHandler } from "./whenIsRightOtherwise";
 import { matchInformationExpressionHandler } from "./matchInformation";
 import { rightPipeExpressionHandler } from "./rightPipe";
@@ -65,6 +67,14 @@ export const duploJSEitherExpressionTransformer: Transformer<GoAST.Expression> =
 			DPattern.match(
 				DCommon.equal("isRight"),
 				() => isRightExpressionHandler(node, context),
+			),
+			DPattern.match(
+				DCommon.equal("isLeft"),
+				() => isLeftExpressionHandler(node, context),
+			),
+			DPattern.match(
+				DCommon.equal("unwrapRight"),
+				() => unwrapRightExpressionHandler(node, context),
 			),
 			DPattern.match(
 				DCommon.equal("whenIsRight"),
