@@ -207,7 +207,29 @@ Either[[]float64]{Tag: TagLeftFail}                     // erreur : inchangée
 
 ### D-10 · `pipe` / formes curryfiées — ✅ (adapté à D-09.3)
 - `DCommon.pipe(x, f, g)` est **déroulé à la compilation** en `t1 := f(x)`, puis `t2 := g(t1)`. Ce n'est pas une optimisation : Go n'a pas de génériques variadiques, donc un `Pipe` générique est impossible sans écrire `Pipe2`, `Pipe3`… Le déroulé est ici le plus simple.
-- Les formes curryfiées (`DEither.whenIsRight(fn)` sans données) ne sont traduites que dans un `pipe` ou un `map`, où la donnée est connue. Elles deviennent un appel au helper générique avec cette donnée : `t2 := WhenIsRight(t1, fn)`.
+- ~~Les formes curryfiées ne sont traduites que dans un `pipe` ou un `map`.~~ **Remplacé par D-17** : une forme curryfiée devient une vraie fonction Go, utilisable partout.
+- **Implémenté (18/11/2026, branche `etape-8a-pipe`)** dans `duplojs/common/pipe/` :
+  ```go
+  Generated_8 := Sourced_value                // l'entrée
+  Generated_9 := Sourced_double(Generated_8)  // étape 1
+  Generated_10 := Sourced_addTen(Generated_9) // étape 2 -> résultat
+  ```
+  Ordre d'évaluation identique à TypeScript : l'entrée, puis **toutes les étapes** (les fonctions elles-mêmes), puis les appels. Une étape qui n'est pas un simple nom de fonction est d'abord rangée dans une variable.
+
+### D-17 · Formes curryfiées des helpers Either = fonctions Go — ✅ (18/11/2026, branche `etape-8a-pipe`)
+**Le problème.** Dans `DCommon.pipe(result, DEither.whenIsRight(double))`, `DEither.whenIsRight(double)` n'a **pas** de donnée : c'est une **fonction** qui attend l'Either. Le projet 08 en passe même une à `DArray.map`.
+
+**Choix.** La forme curryfiée devient une **fonction Go littérale**, qui appelle le même helper que la forme avec données :
+```go
+func(input shard_dependencies.Either[float64]) shard_dependencies.Either[float64] {
+    return shard_dependencies.WhenIsRight(input, Sourced_double, …)
+}
+```
+- **Le type du paramètre et du résultat** vient de la signature **instanciée par le checker**. Dans un `pipe`, TypeScript connaît l'entrée, par exemple `(input: Fail | Success<number>) => number | Fail`.
+- **Aucun code dupliqué** : chaque helper (`whenIsRight`, `whenIsRightOtherwise`, `matchInformation`) est écrit comme une « opération » qui reçoit son entrée (`either/core/operand.ts`). La forme avec données lui passe l'argument TS, la forme curryfiée lui passe le paramètre de la fonction générée.
+- **Évaluation** : les callbacks sont évalués **une fois**, à la création de la fonction curryfiée, comme en TypeScript. Leurs préparations restent hors de la fonction Go.
+- **Pourquoi pas « injecter » la donnée dans le `pipe` ?** C'est plus court en Go, mais ça ne marche que dans un `pipe`. Une vraie fonction marche aussi dans `DArray.map` (projet 08) et partout ailleurs.
+- **Vérifié** : `tests/pipe/`, 15 contrôles. Les valeurs attendues ont été obtenues en exécutant le même code TypeScript avec DuploJS. Ce test confirme notamment que la valeur brute (`TagValue`) produite par `whenIsRight` n'est **pas** un Right pour l'étape suivante, comme en DuploJS.
 
 ### D-11 · Asynchrone (projet 10) — 🟡
 - Il n'y a aucune vraie entrée/sortie, donc une **exécution synchrone** (`Promise<T>` traduit en `T`) préserve l'ordre et le résultat.
