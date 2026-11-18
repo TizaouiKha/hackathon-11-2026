@@ -4,11 +4,12 @@ import { createSharedDependency } from "@transformer";
 import { eitherFieldIdentifiers } from "../core/sharedDependency";
 import {
 	argument,
+	assertType,
 	call,
 	functionType,
 	genericFunction,
 	isRightCall,
-	localEither,
+	localEitherAny,
 	returnValue,
 	select,
 } from "../core/goFunction";
@@ -17,21 +18,21 @@ export const rightThenIdentifier = GoAST.createIdentifier("RightThen");
 
 /**
  * ```go
- * func RightThen[T any](input Either[T], next func(T) Either[T]) Either[T] {
+ * func RightThen[T any](input EitherAny, next func(T) EitherAny) EitherAny {
  *     if !input.Tag.IsRight() {
  *         return input
  *     }
- *     return next(input.Value)
+ *     return next(input.Value.(T))
  * }
  * ```
  * `rightPipe(r, f, g)` devient `RightThen(RightThen(r, f), g)` : Go n'a pas de
  * génériques variadiques, d'où un helper à deux arguments, appelé en chaîne.
+ * `T` est le type déclaré par l'étape TypeScript (inféré par Go, D-18).
  */
 export const rightThenDependency = DCommon.memo(() => {
 	const valueType = GoAST.createIdentifier("T");
 	const input = GoAST.createIdentifier("input");
 	const next = GoAST.createIdentifier("next");
-	const eitherType = localEither(valueType);
 
 	return createSharedDependency({
 		imports: [],
@@ -41,10 +42,10 @@ export const rightThenDependency = DCommon.memo(() => {
 				name: rightThenIdentifier,
 				generic: [valueType],
 				arguments: [
-					argument(input, eitherType),
-					argument(next, functionType([valueType], eitherType)),
+					argument(input, localEitherAny),
+					argument(next, functionType([valueType], localEitherAny)),
 				],
-				returnType: eitherType,
+				returnType: localEitherAny,
 				statements: [
 					GoAST.createIfStatement({
 						condition: GoAST.createUnaryExpression({
@@ -55,7 +56,7 @@ export const rightThenDependency = DCommon.memo(() => {
 							statements: [returnValue(input)],
 						}),
 					}),
-					returnValue(call(next, [select(input, eitherFieldIdentifiers.value)])),
+					returnValue(call(next, [assertType(select(input, eitherFieldIdentifiers.value), valueType)])),
 				],
 			}),
 		],

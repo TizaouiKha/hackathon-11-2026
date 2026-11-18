@@ -27,8 +27,10 @@ function readPropertyName(property: TsAST.ObjectLiteralElementLike) {
 
 /**
  * Traduction de `matchInformation` pour une entrée donnée :
- * `shard_dependencies.MatchInformation(result, []func(float64) U{TagLeftNegativeOperand: f, TagRightSuccess: g})`.
- * Limite : seulement pour `Either[T]` (tous les handlers reçoivent le même type).
+ * `shard_dependencies.MatchInformation(result, []func(any) U{TagLeftNegativeOperand: f, TagRightSuccess: g})`.
+ * Chaque handler reçoit la valeur en `any` ; s'il attend un type précis, il est
+ * enveloppé pour l'ouvrir avec ce type (D-18). Les issues peuvent donc porter
+ * des valeurs de types différents.
  */
 function matchInformationOperation(
 	matcher: TsAST.ObjectLiteralExpression,
@@ -42,10 +44,6 @@ function matchInformationOperation(
 
 		if (DEither.isLeft(shape)) {
 			return shape;
-		}
-
-		if (shape.kind !== "either") {
-			return context.error(operand.node, "match-information-on-either2-not-supported");
 		}
 
 		const outputGoType = await DCommon.asyncPipe(
@@ -72,7 +70,7 @@ function matchInformationOperation(
 					const information = readPropertyName(item);
 					const variant = information === undefined
 						? undefined
-						: DArray.find(shape.variants, (candidate) => candidate.information === information);
+						: DArray.find(shape.issues, (candidate) => candidate.information === information);
 
 					if (!TsAST.isPropertyAssignment(item) || !variant) {
 						return exit(context.error(item, "unsupported-match-information-handler"));
@@ -82,7 +80,7 @@ function matchInformationOperation(
 						transformCallback(
 							{
 								node: item.initializer,
-								parameterTypes: [shape.rightValueType],
+								parameterTypes: [GoAST.builtinTypeReferences.any],
 								returnType: outputGoType,
 							},
 							context,
@@ -125,7 +123,7 @@ function matchInformationOperation(
 					operand.expression,
 					GoAST.createSliceLiteral({
 						typeReference: GoAST.createSliceType({
-							elementType: functionType([shape.rightValueType], outputGoType),
+							elementType: functionType([GoAST.builtinTypeReferences.any], outputGoType),
 						}),
 						elements: handlers.elements,
 					}),
