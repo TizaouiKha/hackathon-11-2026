@@ -17,7 +17,7 @@ Chaque étape indique : **le but**, **ce qu'il faut avoir lu**, **ce qu'il faut 
 | 1 | [Projet 00 qui compile](#étape-1--projet-00-qui-compile) | — | Claude | ✅ |
 | 2 | [Script de vérification](#étape-2--script-de-vérification) | — | Claude | ✅ |
 | 3 | [Représentation des `Either` en Go](#étape-3--représentation-des-either-en-go) | — | Claude | ✅ (branche `etape-3-either`) |
-| 4 | [`print` fidèle à Node (`util.inspect`)](#étape-4--print-fidèle-à-node) | — | | ⬜ |
+| 4 | [`print` fidèle à Node (`util.inspect`)](#étape-4--print-fidèle-à-node) | — | | ✅ |
 | 5 | [Helper de préparation](#étape-5--helper-de-préparation) | — | | ⬜ |
 | 6 | [Transformers de base du langage](#étape-6--transformers-de-base-du-langage) | 5 | | ⬜ |
 | 7 | [Domaine Either (handlers)](#étape-7--domaine-either) | 3, 5 | Claude | 🟨 presque fini (branche `etape-7-either-helpers`) : il reste `group` (attend les types tableau, étape 6) |
@@ -179,6 +179,10 @@ tests/<nom>/
 ---
 
 ## Étape 4 — `print` fidèle à Node
+
+> ✅ **Fait.** `src/transpiler/transformers/duplojs/common/print/` fournit `Inspect` / `Print` et le handler de `DCommon.print`. `Print` affiche puis retourne sa valeur comme l'API TypeScript. `tests/print/` vérifie les valeurs simples, les tableaux, les clés d'objet, les guillemets, l'Unicode, les nombres limites, les `Either` success/fail et les valeurs brutes `TagValue` pour `Either` et `Either2`. Les tests passent avec `bash .commands/test-runtime.sh print`.
+>
+> Cela valide la brique d'affichage, pas les projets 01 à 08 au complet : ils dépendent aussi d'autres étapes du transpileur.
 
 > ⚠️ **À savoir depuis l'étape 7 (D-16)** : un Either dont le tag est `TagValue` est en fait une **valeur brute** (le résultat de `whenIsRight`). `print` doit alors afficher **seulement** sa valeur (`Value` pour `Either`, `Right` pour `Either2`), par exemple `[ 3 ]`, et **pas** l'objet DuploJS. On le détecte avec `x.Tag == shard_dependencies.TagValue`, ou `x.Tag.Information() == "value"`.
 

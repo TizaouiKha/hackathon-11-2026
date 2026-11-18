@@ -5,6 +5,7 @@ import { createTransformer, type Transformer } from "@transformer";
 import type { GoAST } from "@go";
 import { TsAST } from "@typescript";
 import { pipeExpressionHandler } from "./pipe";
+import { printExpressionHandler } from "./print";
 
 /**
  * Routeur du domaine `@duplojs/lang/common` (fonctions `DCommon.*`).
@@ -38,6 +39,10 @@ export const duploJSCommonExpressionTransformer: Transformer<GoAST.Expression> =
 			DPattern.match(
 				DCommon.equal("pipe"),
 				() => pipeExpressionHandler(node, context),
+			),
+			DPattern.match(
+				DCommon.equal("print"),
+				() => printExpressionHandler(node, context),
 			),
 			// Fonction du domaine pas encore traduite : `notfound-transformer` la signalera.
 			DPattern.otherwise(
