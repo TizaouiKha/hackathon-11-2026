@@ -16,7 +16,7 @@ Chaque étape indique : **le but**, **ce qu'il faut avoir lu**, **ce qu'il faut 
 | 0 | [Installer l'environnement](#étape-0--installer-lenvironnement) | — | tout le monde | — |
 | 1 | [Projet 00 qui compile](#étape-1--projet-00-qui-compile) | — | Claude | ✅ |
 | 2 | [Script de vérification](#étape-2--script-de-vérification) | — | Claude | ✅ |
-| 3 | [Représentation des `Either` en Go](#étape-3--représentation-des-either-en-go) | — | | ⬜ |
+| 3 | [Représentation des `Either` en Go](#étape-3--représentation-des-either-en-go) | — | Claude | ✅ (branche `etape-3-either`) |
 | 4 | [`print` fidèle à Node (`util.inspect`)](#étape-4--print-fidèle-à-node) | — | | ⬜ |
 | 5 | [Helper de préparation](#étape-5--helper-de-préparation) | — | | ⬜ |
 | 6 | [Transformers de base du langage](#étape-6--transformers-de-base-du-langage) | 5 | | ⬜ |
@@ -53,7 +53,12 @@ Répartition conseillée pour 3 personnes :
    - pour les API DuploJS : un **routeur** qui résout le symbole, puis un **handler** par fonction. On ne reconnaît jamais une fonction à son seul nom ;
    - listes de transformers en `DCommon.memo`.
 3. **Pour construire du Go**, utilise les factories existantes `GoAST.create...` (dans `src/go/AST/`). N'en écris pas de nouvelles sauf si un nœud manque vraiment.
-4. **Une étape est finie quand** `./.commands/check.sh NN` affiche ✓ pour les projets concernés, **et** que `pnpm test:types` passe.
+4. **Une étape est finie quand** :
+   - `./.commands/check.sh NN` affiche ✓ pour les projets concernés ;
+   - `pnpm test:runtime` passe (tests d'exécution de `tests/`, voir l'étape 2) ;
+   - `pnpm test:types` et `pnpm test:lint` passent.
+
+   Quand une étape ne peut pas encore être validée par un projet complet (par exemple parce qu'il manque `print`), **ajoute un test d'exécution** dans `tests/<nom>/` pour prouver que ton code marche.
 5. **On note tout** : un choix dans `DECISIONS.md`, l'avancement et le Go obtenu dans `EXERCICES.md`. On les met à jour dans le même commit que le code.
 6. **Git** : une branche par étape (`etape-3-either`, etc.), puis une PR vers `main`. Petits commits, messages clairs.
 
@@ -102,9 +107,45 @@ Correction dans `src/transpiler/transformers/duplojs/either/success/index.ts` : 
 
 C'est **l'outil de validation de toutes les étapes**. Si les sorties diffèrent, le script affiche un diff : `-` pour ce que TypeScript affiche, `+` pour ce que le Go affiche.
 
+### Tests d'exécution : `pnpm test:runtime`
+
+`check.sh` ne peut valider une brique que si un projet complet tourne. Or, au début, il manque encore `print`, `if`… Pour tester une brique **seule**, on écrit un test d'exécution :
+
+```
+tests/<nom>/
+├── tsconfig.json   (copie de projects/00/tsconfig.json)
+├── index.ts        (point d'entrée : importe au moins un fichier à tester)
+├── xxx.ts          (le TypeScript à transpiler)
+└── check/main.go   (programme Go écrit à la main : appelle le Go transpilé et vérifie les valeurs)
+```
+
+- `pnpm test:runtime` lance tous les tests, et `./.commands/test-runtime.sh either` un seul.
+- Le script transpile le dossier, copie `check/` dans `dist/`, puis lance `go vet` et `go run ./check`.
+- `check/main.go` importe le package transpilé (par exemple `shapes "duplojs.local/transpiled/shapes.ts"`) et appelle les fonctions sous leur nom Go (`shapes.Sourced_maFonction(...)`). Il doit **sortir avec un code d'erreur** si un contrôle échoue (`os.Exit(1)`).
+- Exemple complet : `tests/either/` (étape 3), avec 21 contrôles.
+
 ---
 
 ## Étape 3 — Représentation des `Either` en Go
+
+> ✅ **Fait** sur la branche `etape-3-either`. Résumé de ce qui existe maintenant, pour les étapes 4 et 7 :
+> - **Code** : `src/transpiler/transformers/duplojs/either/core/` :
+>   - `sharedDependency.ts` : `EitherTag`, les tables, `Either[T]`, `Either2[R, L]` ;
+>   - `tag.ts` : `registerEitherTag(context, side, information)` renvoie la constante `shard_dependencies.TagLeftXxx` ;
+>   - `type.ts` : la règle `Either` / `Either2` ;
+>   - `construct.ts` : `constructEither(...)` construit un littéral de struct du **type cible** (le type de retour de la fonction englobante, sinon le type contextuel, sinon le type propre de l'appel).
+> - **Handlers** : `success/`, `fail/`, `left/` dans `either/`.
+> - **Côté Go**, depuis un autre package :
+>   - `r.Tag.IsRight()` renvoie un `bool` ;
+>   - `r.Tag.Information()` renvoie le texte (par exemple `"negative-operand"`), utile pour `print` (étape 4) ;
+>   - `r.Value` pour `Either`, `r.Right` / `r.Left` pour `Either2`.
+> - **Vérifié** :
+>   - `check.sh 00` ✓ ;
+>   - **`tests/either/`** (`pnpm test:runtime`) : un `fail` dans une union explicite, un `success`, un `left` inféré, un littéral `0` élargi en `float64`, et `Either2` des deux côtés. Le Go est **exécuté**, et 21 contrôles vérifient `IsRight()`, `Information()`, les valeurs et l'unicité des tags ;
+>   - lint et types OK.
+> - **Pas encore vérifiable** : le `add` du projet 04 a besoin du transformer `if` (étape 6), et `Success<number[]>` (projet 09) a besoin des types tableau (étape 6).
+>
+> Le reste de cette section décrit ce qui a été demandé.
 
 **But** : mettre en place en Go la représentation des `Either` **décidée en équipe** (D-09, ✅) : tag entier, `Either[T]` ou `Either2[R, L]`. C'est la fondation des projets 01 à 10.
 

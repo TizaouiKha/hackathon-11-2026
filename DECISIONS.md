@@ -113,6 +113,24 @@ func RightPipe…, Group…, MatchInformation…
 - **Plus tard (étape 11)** : `go build -gcflags=-m` et `go test -bench`. On ne déroule à la compilation que ce que les mesures désignent, probablement `IsRight`.
 - Les helpers sont des **shared dependencies**, une par opération (voir le skill `typescript-to-go`).
 
+#### D-09.4 · Mise en œuvre (étape 3) — ✅ (17/11/2026, branche `etape-3-either`)
+- **Constructeurs = littéraux de struct**, pas des fonctions :
+  - `DEither.success(x)` devient `shard_dependencies.Either[float64]{Tag: shard_dependencies.TagRightSuccess, Value: x}` ;
+  - `fail()` ne met pas de `Value` (valeur à zéro, et le tag indique `undefined`).
+
+  Pas d'appel, pas d'instanciation générique, aucun coût à l'exécution. Ça remplace `EitherSuccess[T]` / `EitherSuccessOf` du code de départ (et la correction B-01).
+- **Type cible d'un constructeur** : `return DEither.fail()` doit avoir le type de toute la fonction (`Either[float64]`), pas `Fail` seul. On prend, dans l'ordre :
+  1. le type de retour de la fonction englobante, si l'appel est en position de `return` ;
+  2. le type contextuel du checker ;
+  3. le type propre de l'appel.
+- **Tags** :
+  - une constante par couple (côté, information), créée au premier usage et numérotée dans l'ordre d'apparition ;
+  - nommée en PascalCase : `TagRightSuccess`, `TagLeftNegativeOperand` ;
+  - chaque tag remplit les tables dans le `init()` de `shard_dependencies`. Les tables sont des tableaux fixes `[256]`, donc pas d'allocation, et un `uint8` ne peut pas sortir des bornes.
+- **Registre des tags** : il est rattaché au `TranspilationContext` par une `WeakMap`, dans `either/core/tag.ts`. On n'ajoute donc pas de champ propre au domaine Either dans le contexte global.
+- **Littéraux élargis** : `Left<"x", 0>` (génériques `const` de DuploJS) devient une valeur `float64`.
+- **Limite connue** : un constructeur utilisé comme valeur (`map(xs, DEither.success)`) renvoie une erreur `either-constructor-used-as-value-not-supported`. Aucun exercice n'a ce cas.
+
 #### Comparatif qui a servi à décider
 
 | Question | Option | ✅ Points forts | ❌ Points faibles |
@@ -151,6 +169,7 @@ func RightPipe…, Group…, MatchInformation…
 ### D-14 · Validation par comparaison automatique avec TypeScript — ✅
 - `./.commands/check.sh NN` (ou `pnpm check NN`) transpile, compile, exécute le Go et le TS, puis fait un `diff` des sorties.
 - Une étape ou un exercice est validé seulement si ce script affiche ✓.
+- **Complément (18/11/2026)** : les **tests d'exécution** `tests/<nom>/` (`pnpm test:runtime`). Ils servent à valider une brique seule, avant que les projets complets puissent tourner : un petit TS à transpiler, plus un `check/main.go` écrit à la main qui vérifie les valeurs Go. Le premier est `tests/either/` (étape 3, 21 contrôles). Leur `dist/` est ignoré par git, et ils sont inclus dans le lint (`oxlint.config.ts`).
 
 ### D-15 · Organisation du travail — ✅
 - Les étapes, leurs dépendances et la répartition sont dans [ETAPES.md](ETAPES.md). Chacun s'inscrit sur une étape avant de la commencer.
@@ -159,7 +178,7 @@ func RightPipe…, Group…, MatchInformation…
 
 ## Bugs connus du code de départ
 
-### B-01 · `EitherSuccessOf` utilisé sans instanciation — ✅ corrigé (17/11/2026)
+### B-01 · `EitherSuccessOf` utilisé sans instanciation — ✅ corrigé, puis rendu caduc par D-09.4 (`EitherSuccessOf` n'existe plus)
 - `go build` du projet 00 : `cannot use generic function shard_dependencies.EitherSuccessOf without instantiation`.
 - Le Go généré contenait `Generated_4 := shard_dependencies.EitherSuccessOf` alors qu'il faut `EitherSuccessOf[float64]`, comme dans le README du projet 00.
 - **Correction** (`duplojs/either/success/index.ts`) :
