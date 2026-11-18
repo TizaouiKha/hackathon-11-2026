@@ -40,10 +40,11 @@ Statuts : ✅ adopté · 🟡 proposé (à valider en équipe) · ❌ écarté.
 - La liste complète tirée des 11 exercices est dans [EXERCICES.md](EXERCICES.md#inventaire-des-transformers).
 - Elle sert à se répartir le travail.
 
-### D-06 · Helper de « préparation » dans `BuildContext` — 🟡
+### D-06 · Helper de « préparation » dans `BuildContext` — ✅
 - **Problème** : le motif « transformer l'enfant, vérifier l'erreur, créer une variable temporaire, concaténer `before` » est copié-collé (`binary.ts`, `call.ts`) et va revenir partout.
-- **Proposition** : `context.transformPrepared(node, list)`, qui renvoie `{ before, operand }`.
-- **Optimisation** : ne pas créer de variable temporaire pour un identifiant ou un littéral (aujourd'hui `1 + 2` en génère 4). Le Go reste juste, devient lisible, et la sortie est plus « pertinente » au sens du cours.
+- **Implémentation** — `context.transformPrepared(node, list)` transmet les erreurs de transformation. En cas de succès, il renvoie `{ before, operand }`, où `before` contient les instructions à exécuter avant d'utiliser `operand`.
+- Les identifiants et les littéraux, dont les nombres écrits `float64(...)`, sont utilisés directement. Un temporaire permet de calculer une expression plus complexe une seule fois, au bon moment. Pour certaines opérations avec un littéral numérique, il impose aussi un calcul à l'exécution, par exemple pour diviser par zéro.
+- Dans un appel, on prépare la fonction, puis les arguments de gauche à droite. Pour `&&` et `||`, les instructions de droite sont exécutées uniquement quand l'opérateur a besoin de cette valeur.
 - Placé dans le contexte plutôt que dans `helpers/` pour rester dans l'esprit de D-04.
 
 ### D-07 · Constantes du module partagées entre fichiers — 🟡

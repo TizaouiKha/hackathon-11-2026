@@ -1,10 +1,10 @@
 import { TsAST } from "@typescript";
 import { GoAST } from "@go";
 import { createTransformer, type Transformer } from "@transformer";
-import * as DCommon from "@duplojs/lang/common";
 import { expressionTransformers } from "../expression";
 import * as DEither from "@duplojs/lang/either";
 import * as DArray from "@duplojs/lang/array";
+import * as DGenerator from "@duplojs/lang/generator";
 
 export const callExpressionTransformer: Transformer<GoAST.CallExpression> = createTransformer(
 	async(rawNode, context) => {
@@ -15,75 +15,43 @@ export const callExpressionTransformer: Transformer<GoAST.CallExpression> = crea
 			return context.notSupport();
 		}
 
-		const callee = await DCommon.asyncPipe(
-			context.transform(node.expression, expressionTransformers.value),
-			DEither.unwrapRight,
-		);
-
+		const callee = await context.transformPrepared(node.expression, expressionTransformers.value);
 		if (DEither.isLeft(callee)) {
 			return callee;
 		}
 
-		const functionVariableStatement = GoAST.createShortVariableDeclarationStatement({
-			identifier: context.generateIdentifier(),
-			initializer: callee.result,
-		});
-
-		const argumentsResult = await DCommon.asyncPipe(
+		// Chaque préparation est ajoutée avant de passer à l'argument suivant.
+		const preparedArguments = await DGenerator.asyncReduce(
 			node.arguments,
-			DArray.map(
-				async(tsArgument) => DCommon.asyncPipe(
-					context.transform(tsArgument, expressionTransformers.value),
-					DEither.unwrapRight,
-				),
-			),
-			DCommon.promiseAll,
-			DArray.reduce(
-				DArray.reduceFrom<{
-					before: readonly GoAST.Statement[];
-					arguments: readonly GoAST.Expression[];
-				}>({
-					before: [],
-					arguments: [],
-				}),
-				({ element, lastValue, next, exit }) => {
-					if (DEither.isLeft(element)) {
-						return exit(element);
-					}
+			DGenerator.reduceFrom<{
+				before: readonly GoAST.Statement[];
+				operands: readonly GoAST.Expression[];
+			}>({
+				before: callee.before,
+				operands: [],
+			}),
+			async({ item, lastValue, next, exit }) => {
+				const argument = await context.transformPrepared(item, expressionTransformers.value);
+				if (DEither.isLeft(argument)) {
+					return exit(argument);
+				}
 
-					const argumentVariableStatement = GoAST.createShortVariableDeclarationStatement({
-						identifier: context.generateIdentifier(),
-						initializer: element.result,
-					});
-
-					return next({
-						before: DArray.concat(
-							lastValue.before,
-							element.before,
-							[argumentVariableStatement],
-						),
-						arguments: DArray.push(
-							lastValue.arguments,
-							argumentVariableStatement.identifier,
-						),
-					});
-				},
-			),
+				return next({
+					before: DArray.concat(lastValue.before, argument.before),
+					operands: DArray.push(lastValue.operands, argument.operand),
+				});
+			},
 		);
 
-		if (DEither.isLeft(argumentsResult)) {
-			return argumentsResult;
+		if (DEither.isLeft(preparedArguments)) {
+			return preparedArguments;
 		}
 
 		return context.success({
-			before: DArray.concat(
-				callee.before,
-				[functionVariableStatement],
-				argumentsResult.before,
-			),
+			before: preparedArguments.before,
 			result: GoAST.createCallExpression({
-				callee: functionVariableStatement.identifier,
-				arguments: argumentsResult.arguments,
+				callee: callee.operand,
+				arguments: preparedArguments.operands,
 			}),
 		});
 	},
