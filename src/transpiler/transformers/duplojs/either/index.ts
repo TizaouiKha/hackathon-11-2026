@@ -4,11 +4,15 @@ import { createTransformer, type Transformer } from "@transformer";
 import type { GoAST } from "@go";
 import { TsAST } from "@typescript";
 import * as DPattern from "@duplojs/lang/pattern";
-import * as DArray from "@duplojs/lang/array";
 import { successExpressionHandler } from "./success";
 import { failExpressionHandler } from "./fail";
 import { leftExpressionHandler } from "./left";
-import { eitherTypeHandler, isEitherMemberCandidate, resolveEitherTypeName, unwrapParenthesizedType } from "./core/type";
+import { isRightExpressionHandler } from "./isRight";
+import { whenIsRightOtherwiseExpressionHandler } from "./whenIsRightOtherwise";
+import { matchInformationExpressionHandler } from "./matchInformation";
+import { rightPipeExpressionHandler } from "./rightPipe";
+import { whenIsRightExpressionHandler } from "./whenIsRight";
+import { eitherTypeHandler } from "./core/type";
 
 export const duploJSEitherDeclarationTransformer: Transformer<GoAST.Declaration> = createTransformer(
 	(_node, context) => context.notSupport(),
@@ -50,6 +54,26 @@ export const duploJSEitherExpressionTransformer: Transformer<GoAST.Expression> =
 				DCommon.equal("left"),
 				() => leftExpressionHandler(node, context),
 			),
+			DPattern.match(
+				DCommon.equal("isRight"),
+				() => isRightExpressionHandler(node, context),
+			),
+			DPattern.match(
+				DCommon.equal("whenIsRight"),
+				() => whenIsRightExpressionHandler(node, context),
+			),
+			DPattern.match(
+				DCommon.equal("whenIsRightOtherwise"),
+				() => whenIsRightOtherwiseExpressionHandler(node, context),
+			),
+			DPattern.match(
+				DCommon.equal("matchInformation"),
+				() => matchInformationExpressionHandler(node, context),
+			),
+			DPattern.match(
+				DCommon.equal("rightPipe"),
+				() => rightPipeExpressionHandler(node, context),
+			),
 			DPattern.otherwise(
 				() => context.error(node),
 			),
@@ -57,38 +81,17 @@ export const duploJSEitherExpressionTransformer: Transformer<GoAST.Expression> =
 	},
 );
 
-const eitherTypeNames: readonly string[] = ["Success", "Fail", "Left", "Right"];
-
 /**
- * Types Either : un membre seul (`Success<number>`) ou une union dont tous les
- * membres sont des types Either (`Fail | Success<number>`), parenthèses comprises.
+ * Types Either : un membre seul (`Success<number>`) ou une union contenant au
+ * moins un type Either (`Fail | Success<number>`, ou `number | Fail` avec une
+ * valeur brute, D-16), parenthèses comprises.
  */
 export const duploJSEitherTypeTransformer: Transformer<GoAST.GenericTypeReference> = createTransformer(
-	async(node, context) => {
+	(node, context) => {
 		if (!TsAST.isTypeNode(node)) {
 			return context.notSupport();
 		}
 
-		const unwrapped = unwrapParenthesizedType(node);
-		const candidates = TsAST.isUnionTypeNode(unwrapped)
-			? unwrapped.types
-			: [unwrapped];
-		const members = DArray.filter(candidates, isEitherMemberCandidate);
-
-		if (members.length !== candidates.length) {
-			return context.notSupport();
-		}
-
-		const names = await DCommon.asyncPipe(
-			members,
-			DArray.map((member) => resolveEitherTypeName(member, context)),
-			DCommon.promiseAll,
-		);
-
-		if (!DArray.every(names, (name) => name !== undefined && DArray.includes(eitherTypeNames, name))) {
-			return context.notSupport();
-		}
-
-		return eitherTypeHandler(unwrapped, members, context);
+		return eitherTypeHandler(node, context);
 	},
 );

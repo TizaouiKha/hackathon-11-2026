@@ -9,7 +9,7 @@ import type { BuildContext } from "../../../../context/build";
 import { expressionTransformers } from "../../../expression";
 import { eitherFieldIdentifiers } from "./sharedDependency";
 import { registerEitherTag, type EitherSide } from "./tag";
-import { eitherTypeHandler, isEitherMemberCandidate, unwrapParenthesizedType } from "./type";
+import { eitherTypeHandler } from "./type";
 
 function findEnclosingFunction(node: TsAST.Node): TsAST.SignatureDeclaration | undefined {
 	const { parent } = node;
@@ -79,17 +79,7 @@ async function transformTargetType(type: Type, call: TsAST.CallExpression, conte
 		return context.notSupport();
 	}
 
-	const unwrapped = unwrapParenthesizedType(typeNode);
-	const candidates = TsAST.isUnionTypeNode(unwrapped)
-		? unwrapped.types
-		: [unwrapped];
-	const members = DArray.filter(candidates, isEitherMemberCandidate);
-
-	if (members.length !== candidates.length) {
-		return context.notSupport();
-	}
-
-	return eitherTypeHandler(unwrapped, members, context);
+	return eitherTypeHandler(typeNode, context);
 }
 
 async function resolveTargetType(call: TsAST.CallExpression, context: BuildContext) {
