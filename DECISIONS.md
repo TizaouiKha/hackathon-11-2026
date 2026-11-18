@@ -143,6 +143,43 @@ func RightPipe…, Group…, MatchInformation…
 | 3 | **Fonctions génériques** | **simples à écrire et à tester, Go lisible** | appel et closure possibles (souvent supprimés par Go) |
 | 3 | Déroulé à la compilation | le plus rapide | dur à générer, à déboguer, et duplique le code |
 
+#### D-09.5 · Mise en œuvre des helpers (étape 7) — ✅ (18/11/2026, branche `etape-7-either-helpers`)
+- **`isRight(r)` devient `r.Tag.IsRight()`**. Pas de helper `IsRight` (contrairement à ce que prévoyait D-09.3) : la méthode du tag fait déjà le travail, sans appel supplémentaire, et marche pour `Either` comme pour `Either2`.
+- **Helpers génériques écrits une fois**, en shared dependency, un dossier par fonction :
+
+  | Helper | Rôle |
+  |---|---|
+  | `WhenIsRightOtherwise[T, U]` et `WhenIsRightOtherwise2[R, L, U]` | appliquer un callback selon le côté |
+  | `MatchInformation[T, U](input, handlers []func(T) U)` | handlers rangés **par numéro de tag** dans un slice (accès direct, pas de map) |
+  | `RightThen[T](input, next)` | `rightPipe(r, f, g)` devient `RightThen(RightThen(r, f), g)` |
+- **Adaptation des callbacks** : TypeScript accepte un callback qui ignore ses paramètres (`() => -1`), Go exige la signature exacte. Le transpileur enveloppe alors le callback : `func(_ float64) float64 { return f() }`. Le callback est évalué une seule fois, avant.
+- **Limites explicites** (erreurs claires, aucun exercice concerné) :
+  - `matchInformation` et `rightPipe` sur un `Either2` ;
+  - une étape de `rightPipe` qui change de type d'Either ou renvoie une valeur brute ;
+  - un callback dont le paramètre est plus précis que ce qu'il reçoit.
+
+### D-16 · Résultat de `whenIsRight` : « valeur brute | erreur » — 🟡 **à valider en équipe**
+**Le problème.** `DEither.whenIsRight(r, f)` ne renvoie **pas** un `Either` :
+- si `r` est un succès, il renvoie **directement** `f(valeur)`, une valeur brute ;
+- sinon, il renvoie `r` tel quel (l'erreur).
+
+Exemple dans les projets 02 à 04 : `whenIsRight(result, coalescing)` a le type `number[] | Fail`. Il affiche `[ 3 ]` (le tableau brut) si c'est un succès, et l'objet `Fail` sinon. D-09 ne prévoit pas ce mélange « valeur brute ou Either ».
+
+**Proposition : un tag réservé `TagValue`**, qui veut dire « ce n'est pas un Either, c'est une valeur brute ».
+```go
+// number[] | Fail  ->  Either[[]float64]
+Either[[]float64]{Tag: TagValue, Value: []float64{3}}   // succès : la valeur brute
+Either[[]float64]{Tag: TagLeftFail}                     // erreur : inchangée
+```
+- On réutilise toute la mécanique existante : la règle `Either` / `Either2` de D-09.2, le tag entier et les tables. Aucun nouveau type.
+- `TagValue.IsRight()` vaut `false`, ce qui est cohérent avec DuploJS : `isRight([3])` est faux.
+- **`print` (étape 4)** devra afficher seulement `Value` quand le tag est `TagValue` (`[ 3 ]`), et l'objet DuploJS sinon.
+- Le helper `WhenIsRight` construit le résultat avec une petite fonction de conversion générée par le transpileur, comme pour l'adaptation des callbacks.
+
+**Alternative écartée** : un nouveau type `ValueOrEither[V, T]`. C'est plus explicite, mais il faut doubler tous les helpers et tout l'affichage.
+
+**À décider** : valider `TagValue`, ou proposer autre chose. Ça concerne aussi la personne de l'étape 4 (`print`).
+
 ### D-10 · `pipe` / formes curryfiées — ✅ (adapté à D-09.3)
 - `DCommon.pipe(x, f, g)` est **déroulé à la compilation** en `t1 := f(x)`, puis `t2 := g(t1)`. Ce n'est pas une optimisation : Go n'a pas de génériques variadiques, donc un `Pipe` générique est impossible sans écrire `Pipe2`, `Pipe3`… Le déroulé est ici le plus simple.
 - Les formes curryfiées (`DEither.whenIsRight(fn)` sans données) ne sont traduites que dans un `pipe` ou un `map`, où la donnée est connue. Elles deviennent un appel au helper générique avec cette donnée : `t2 := WhenIsRight(t1, fn)`.

@@ -20,7 +20,7 @@ Chaque étape indique : **le but**, **ce qu'il faut avoir lu**, **ce qu'il faut 
 | 4 | [`print` fidèle à Node (`util.inspect`)](#étape-4--print-fidèle-à-node) | — | | ⬜ |
 | 5 | [Helper de préparation](#étape-5--helper-de-préparation) | — | | ⬜ |
 | 6 | [Transformers de base du langage](#étape-6--transformers-de-base-du-langage) | 5 | | ⬜ |
-| 7 | [Domaine Either (handlers)](#étape-7--domaine-either) | 3, 5 | | ⬜ |
+| 7 | [Domaine Either (handlers)](#étape-7--domaine-either) | 3, 5 | Claude | 🟨 en partie (branche `etape-7-either-helpers`) : il reste `whenIsRight` (décision D-16) et `group` (types tableau, étape 6) |
 | 8 | [Domaines Common / Array / String](#étape-8--domaines-common--array--string) | 4, 5 | | ⬜ |
 | 9 | [Valider les projets 01 → 09](#étape-9--valider-les-projets-01--09) | 6, 7, 8 | tout le monde | ⬜ |
 | 10 | [Projet 10 (asynchrone)](#étape-10--projet-10-asynchrone) | 9 | | ⬜ |
@@ -264,6 +264,24 @@ Les règles à reproduire :
 ---
 
 ## Étape 7 — Domaine Either
+
+> 🟨 **En partie fait** sur la branche `etape-7-either-helpers` (créée depuis `etape-3-either`).
+>
+> | Fonction | État | Go généré |
+> |---|---|---|
+> | `success`, `fail`, `left` | ✅ (étape 3) | littéral `Either[T]{Tag: …, Value: …}` |
+> | `isRight(r)` | ✅ | `r.Tag.IsRight()` (méthode, pas de helper) |
+> | `whenIsRightOtherwise(r, f, g)` | ✅ `Either` et `Either2` | `shard_dependencies.WhenIsRightOtherwise(r, f, g)` / `WhenIsRightOtherwise2` |
+> | `matchInformation(r, {…})` | ✅ `Either` seulement | `shard_dependencies.MatchInformation(r, []func(T) U{TagX: f, …})` |
+> | `rightPipe(r, f, g…)` | ✅ si chaque étape renvoie le même type d'Either | `RightThen(RightThen(r, f), g)` |
+> | `whenIsRight(r, f)` | ⬜ **décision D-16 à valider** | renvoie « valeur brute \| erreur », voir `DECISIONS.md` |
+> | `group([…])` | ⬜ attend les types tableau (étape 6) | `Group(rs)`, qui renvoie `Either2[[]T, T]` |
+> | formes sans données (`whenIsRight(fn)` dans un `pipe`) | ⬜ étape 8 | |
+>
+> - **Callbacks** (`either/core/callback.ts`) : un callback TS qui déclare **moins** de paramètres que ce qu'il reçoit (`() => "échec"`) est enveloppé dans `func(_ T) U { return f() }`, car Go exige la signature exacte. Un callback qui déclare un paramètre plus précis que celui reçu n'est pas encore géré.
+> - **Ajout lié à l'étape 6** : le type `boolean` devient `bool` (`type/bool.ts`), nécessaire pour renvoyer le résultat de `isRight`.
+> - **Vérifié** : `tests/either-helpers/` (18 contrôles à l'exécution), `tests/either/`, `check.sh 00`, lint et types.
+> - **Projets 01 à 07** : toujours bloqués par l'étape 6 (`const`, `if`, fonctions fléchées, chaînes) et l'étape 4/8 (`print`).
 
 **But** : traduire chaque fonction `DEither.*` utilisée dans les exercices.
 

@@ -8,6 +8,10 @@ import * as DArray from "@duplojs/lang/array";
 import { successExpressionHandler } from "./success";
 import { failExpressionHandler } from "./fail";
 import { leftExpressionHandler } from "./left";
+import { isRightExpressionHandler } from "./isRight";
+import { whenIsRightOtherwiseExpressionHandler } from "./whenIsRightOtherwise";
+import { matchInformationExpressionHandler } from "./matchInformation";
+import { rightPipeExpressionHandler } from "./rightPipe";
 import { eitherTypeHandler, isEitherMemberCandidate, resolveEitherTypeName, unwrapParenthesizedType } from "./core/type";
 
 export const duploJSEitherDeclarationTransformer: Transformer<GoAST.Declaration> = createTransformer(
@@ -49,6 +53,22 @@ export const duploJSEitherExpressionTransformer: Transformer<GoAST.Expression> =
 			DPattern.match(
 				DCommon.equal("left"),
 				() => leftExpressionHandler(node, context),
+			),
+			DPattern.match(
+				DCommon.equal("isRight"),
+				() => isRightExpressionHandler(node, context),
+			),
+			DPattern.match(
+				DCommon.equal("whenIsRightOtherwise"),
+				() => whenIsRightOtherwiseExpressionHandler(node, context),
+			),
+			DPattern.match(
+				DCommon.equal("matchInformation"),
+				() => matchInformationExpressionHandler(node, context),
+			),
+			DPattern.match(
+				DCommon.equal("rightPipe"),
+				() => rightPipeExpressionHandler(node, context),
 			),
 			DPattern.otherwise(
 				() => context.error(node),
