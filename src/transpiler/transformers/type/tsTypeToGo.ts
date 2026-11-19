@@ -1,6 +1,7 @@
 import * as DArray from "@duplojs/lang/array";
 import * as DEither from "@duplojs/lang/either";
 import { GoAST, GoPrinter } from "@go";
+import { sharedDependencyPackageName } from "@transformer";
 import type { TsAST } from "@typescript";
 import { TypeFlags, type IndexInfo, type Signature, type Symbol as TsSymbol, type Type } from "typescript/async";
 import type { BuildContext } from "../../context/build";
@@ -28,7 +29,7 @@ import { eitherAnyTypeIdentifier, eitherCoreDependency } from "../duplojs/either
  * | TypeScript                               | Go                                          |
  * |------------------------------------------|---------------------------------------------|
  * | `T[]`, `readonly T[]`                    | `[]T`                                       |
- * | tuple `[A, B]`                           | `[2]T` si un seul type Go, sinon `struct{ V0 A; V1 B }` |
+ * | tuple `[A, A]` / `[A, B]`                | `[]A` / `[]any` (une slice, comme un tableau JS) |
  * | objet `{ name: string }`                 | struct anonyme `struct{ Sourced_name string }` |
  * | `Record<string, T>`, `{ [k: string]: T }` | `map[string]T` (`map[float64]T` si la clé est un number) |
  * | fonction `(a: A, ...r: B[]) => R`        | `func(A, ...B) R` (`void` : pas de retour)  |
@@ -117,11 +118,21 @@ async function translate(
 	}
 
 	// Type non résolu (`T`, `T extends X ? A : B`…) : sa contrainte, calculée par
-	// TypeScript (`S extends string` -> `string`) ; sans contrainte : `any`.
+	// TypeScript (`S extends string` -> `string`). Sans contrainte, ou si elle
+	// n'est pas traduisible (`T extends AnyValue`, l'union de toutes les valeurs) : `any`.
 	if (has(type, TypeFlags.Instantiable)) {
 		const constraint = await context.transpilation.typeChecker.getBaseConstraintOfType(type);
 
-		return constraint && constraint.id !== type.id
+		// Sondage sans enregistrer de dépendance : un échec à mi-chemin laisserait
+		// un import Go inutilisé, qui ne compile pas.
+		const probe = constraint && constraint.id !== type.id
+			? await translate(constraint, node, {
+				...context,
+				registerSharedDependency: () => sharedDependencyPackageName,
+			}, inProgress)
+			: undefined;
+
+		return constraint && probe && DEither.isRight(probe)
 			? translate(constraint, node, context, inProgress)
 			: goType(GoAST.builtinTypeReferences.any);
 	}
@@ -137,13 +148,26 @@ async function translate(
 		return goType(sharedType(context, eitherCoreDependency.value, eitherAnyTypeIdentifier.value));
 	}
 
-	// Marque DuploJS (`number & Positive`) : on garde le seul membre primitif.
+	// Marque DuploJS (`number & Positive`, `readonly string[] & MinElements<2>`) :
+	// on garde le seul membre qui porte la valeur, primitif ou tableau.
 	if (type.isIntersectionType()) {
-		const primitives = DArray.filter((await type.getTypes()) ?? [], (member) => has(member, primitiveFlags));
-		const primitive = DArray.first(primitives);
+		const { typeChecker } = context.transpilation;
+		const carriers: Type[] = [];
 
-		return primitive && primitives.length === 1
-			? translate(primitive, node, context, inProgress)
+		for (const member of (await type.getTypes()) ?? []) {
+			if (
+				has(member, primitiveFlags)
+				|| await typeChecker.isArrayType(member)
+				|| await typeChecker.isTupleType(member)
+			) {
+				carriers.push(member);
+			}
+		}
+
+		const carrier = DArray.first(carriers);
+
+		return carrier && carriers.length === 1
+			? translate(carrier, node, context, inProgress)
 			: context.error(node, "type-not-supported-yet");
 	}
 
@@ -220,23 +244,14 @@ async function translateTuple(
 		return translated;
 	}
 
-	const goTypes = DEither.unwrapRight(translated);
-	const kept = distinct(goTypes);
+	// Un tuple est un tableau JS : une slice Go (même sémantique de référence,
+	// compatible avec `T[]` dans une union, utilisable par `DArray.map`).
+	// Éléments de types Go différents : `[]any`, lus par assertion (TS connaît
+	// le type de chaque position), comme `EitherAny` (D-18.5).
+	const kept = distinct(DEither.unwrapRight(translated));
 	const single = kept.length === 1 ? DArray.first(kept) : undefined;
 
-	if (single) {
-		return goType(GoAST.createArrayType({
-			length: GoAST.createIntegerLiteral({ value: BigInt(goTypes.length) }),
-			elementType: single,
-		}));
-	}
-
-	return goType(GoAST.createStructType({
-		fields: goTypes.map((elementType, index) => GoAST.createStructField({
-			identifier: GoAST.createIdentifier(`V${index}`),
-			typeReference: elementType,
-		})),
-	}));
+	return goType(GoAST.createSliceType({ elementType: single ?? GoAST.builtinTypeReferences.any }));
 }
 
 /** Élément `B` du paramètre `...rest: B[]`, s'il y en a un. */

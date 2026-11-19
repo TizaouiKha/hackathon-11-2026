@@ -32,8 +32,8 @@ func main() {
 	// Signatures.
 	expect("number[]", signature(composite.Sourced_numbers), "func([]float64) []float64")
 	expect("readonly string[]", signature(composite.Sourced_frozen), "func([]string) []string")
-	expect("[number, number]", signature(composite.Sourced_pair), "func([2]float64) [2]float64")
-	expect("[string, number]", signature(composite.Sourced_mixed), "func(struct { V0 string; V1 float64 }) struct { V0 string; V1 float64 }")
+	expect("[number, number]", signature(composite.Sourced_pair), "func([]float64) []float64")
+	expect("[string, number]", signature(composite.Sourced_mixed), "func([]interface {}) []interface {}")
 	expect("{ name; age }", signature(composite.Sourced_user), "func(struct { Sourced_name string; Sourced_age float64 }) struct { Sourced_name string; Sourced_age float64 }")
 	expect("objet imbriqué", signature(composite.Sourced_nested), "func(struct { Sourced_tags []string; Sourced_owner struct { Sourced_id float64 } }) struct { Sourced_tags []string; Sourced_owner struct { Sourced_id float64 } }")
 	expect("Record<string, number>", signature(composite.Sourced_dictionary), "func(map[string]float64) map[string]float64")
@@ -49,7 +49,7 @@ func main() {
 		Sourced_age  float64
 	}{"ada", 36}
 	expect("objet aller-retour", composite.Sourced_user(ada) == ada, true)
-	expect("tuple aller-retour", composite.Sourced_pair([2]float64{1, 2}), "[1 2]")
+	expect("tuple aller-retour", composite.Sourced_pair([]float64{1, 2}), "[1 2]")
 	expect("map aller-retour", composite.Sourced_dictionary(map[string]float64{"a": 1})["a"], 1)
 	expect("callback appelé", composite.Sourced_apply(func(value float64) string { return strconv.FormatFloat(value, 'f', -1, 64) }), "1")
 	expect("Either de tableau", composite.Sourced_listResult([]float64{3, 4}).Value.([]float64), "[3 4]")

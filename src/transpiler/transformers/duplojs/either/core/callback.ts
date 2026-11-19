@@ -36,21 +36,34 @@ const anyType = GoAST.builtinTypeReferences.any;
 /** Signature TS du callback : types Go de ses paramètres déclarés et de son retour. */
 async function readCallbackSignature(node: TsAST.Expression, context: BuildContext) {
 	const { typeChecker } = context.transpilation;
-	const signature = DArray.first(
+	const declared = DArray.first(
 		await typeChecker.getSignaturesOfType(
 			await typeChecker.getTypeAtLocation(node),
 			SignatureKind.Call,
 		),
 	);
 
-	if (!signature) {
+	if (!declared) {
 		return context.error(node, "callback-without-call-signature");
 	}
 
+	// Fonction générique passée en valeur (`DArray.coalescing`) : son Go est typé
+	// par la signature **instanciée** à cet endroit, celle qu'attend le contexte
+	// (`(value: number) => readonly [number]`), pas par `<V>(value: V) => …`.
+	// Le **nombre** de paramètres reste celui que la fonction déclare : le contexte
+	// peut en fournir plus (`map` passe `(element, { index, self })` à `DString.to`).
+	const isGeneric = (declared.typeParameters?.length ?? 0) > 0;
+	const expectedType = isGeneric ? await typeChecker.getContextualType(node) : undefined;
+	const expected = expectedType && DArray.first(
+		await typeChecker.getSignaturesOfType(expectedType, SignatureKind.Call),
+	);
+	const declaredParameters = await declared.getParameters();
+	const expectedParameters = expected ? await expected.getParameters() : [];
 	const parameterTypes: GoType[] = [];
 
-	for (const parameter of await signature.getParameters()) {
-		const goType = await tsTypeToGo(await typeChecker.getTypeOfSymbol(parameter), node, context);
+	for (const [index, parameter] of declaredParameters.entries()) {
+		const typed = DArray.at(expectedParameters, index) ?? parameter;
+		const goType = await tsTypeToGo(await typeChecker.getTypeOfSymbol(typed), node, context);
 
 		if (DEither.isLeft(goType)) {
 			return goType;
@@ -59,7 +72,7 @@ async function readCallbackSignature(node: TsAST.Expression, context: BuildConte
 		parameterTypes.push(DEither.unwrapRight(goType));
 	}
 
-	const returnType = await tsTypeToGo(await signature.getReturnType(), node, context);
+	const returnType = await tsTypeToGo(await (expected ?? declared).getReturnType(), node, context);
 
 	if (DEither.isLeft(returnType)) {
 		return returnType;
