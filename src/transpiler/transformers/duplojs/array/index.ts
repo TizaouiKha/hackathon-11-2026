@@ -7,6 +7,7 @@ import type { BuildContext } from "../../../context/build";
 import { coalescingExpressionHandler } from "./coalescing";
 import { lengthHandler, predicateHandler, valuesHandler } from "./iteration";
 import { mapExpressionHandler } from "./map";
+import { reduceFromHandler, reduceHandler } from "./reduce";
 
 type ArrayHandler = (
 	node: TsAST.Node,
@@ -26,6 +27,8 @@ const arrayHandlers: Record<string, ArrayHandler> = {
 	push: valuesHandler("push"),
 	concat: valuesHandler("concat"),
 	length: lengthHandler,
+	reduce: reduceHandler,
+	reduceFrom: reduceFromHandler,
 };
 
 /**

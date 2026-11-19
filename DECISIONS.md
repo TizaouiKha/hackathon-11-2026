@@ -615,6 +615,35 @@ Les callbacks reçoivent `(element, { index, self })`, comme `map`. Le routeur `
 
 **Vérifié** : `tests/darray-functions/` (14 cas comparés à Node), plus toute la suite.
 
+### D-23 · `DArray.reduce` et ses outils — ✅ (19/11/2026, branche `darray-reduce`)
+
+**Le cas** : en DuploJS, le callback de `reduce` reçoit un **objet d'outils** et dit comment continuer.
+```ts
+DArray.reduce(list, 0, ({ element, lastValue, next, exit }) =>
+	element > 2 ? exit(lastValue) : next(lastValue + element));
+```
+
+**Choix** : en Go, cet objet devient un **struct** dont `next`, `exit` et `nextPush` sont des fonctions. Elles renvoient une `ReduceStep { Exit bool; Value any }` : continuer avec `Value`, ou s'arrêter et renvoyer `Value`.
+```go
+shard_dependencies.Reduce(Sourced_numbers, float64(0), func(params struct{ Sourced_element float64; …; Sourced_next func(float64) ReduceStep; … }) ReduceStep {
+	Sourced_element := params.Sourced_element
+	…
+	return Sourced_next(Sourced_lastValue + Sourced_element)
+}).(float64)
+```
+- **Pourquoi** : le corps du callback se traduit alors comme du code ordinaire (déstructuration, ternaire, `if` / `return`, `params.next(…)`), sans réécriture spéciale. Seule `tsTypeToGo` apprend les types de `reduce` : `ReduceTheFunctionParams<A, O>` → le struct d'outils, `ReduceNext` / `ReduceExit` → `ReduceStep`.
+- Le struct est construit par **une seule fonction** (`reduceParamsType`), à la fois pour le helper générique (`T`, `O`) et pour le callback (vrais types) : Go exige deux structs strictement identiques.
+- `nextPush` n'existe que si l'accumulateur est un tableau (helper `ReducePush[T, E]`). Il renvoie une copie, comme `DArray.push`.
+- `DArray.reduceFrom(valeur)` devient simplement la valeur.
+- Le résultat (`any`) est ouvert vers le type TS de `reduce` (`.(float64)`). S'il peut être de deux types (`exit("stop")` avec un accumulateur `number`), il reste `any`.
+- `next`, `exit` et `nextPush` sont des fonctions sans capture : pas d'allocation par tour. Chaque `ReduceStep` range sa valeur dans un `any`.
+
+**Correctif trouvé en route** : `[]` seul a pour TypeScript le type `never[]`. Un tableau littéral vide prend maintenant le **type attendu** à cet endroit (`reduceFrom<readonly string[]>([])` → `[]string{}`).
+
+**Pas encore traduit** : `nextWithObject` (erreur claire).
+
+**Vérifié** : `tests/darray-reduce/` (10 cas comparés à Node : somme, `index`, chaînes, `exit` du même type et d'un autre type, `nextPush` avec `reduceFrom`, forme curryfiée dans un `pipe`, paramètre non déstructuré, objet comme accumulateur, corps en bloc avec `if`), plus toute la suite.
+
 ### D-11 · Asynchrone (projet 10) — 🟡
 - Il n'y a aucune vraie entrée/sortie, donc une **exécution synchrone** (`Promise<T>` traduit en `T`) préserve l'ordre et le résultat.
 - Goroutines et channels seulement en bonus, si on a le temps.

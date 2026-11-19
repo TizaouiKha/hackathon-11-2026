@@ -5,7 +5,7 @@ import * as DModeling from "@duplojs/lang/modeling";
 import { GoAST } from "@go";
 import { createTransformer, type Transformer } from "@transformer";
 import { TsAST } from "@typescript";
-import { tsTypeOfNodeToGo } from "../type";
+import { tsTypeOfNodeToGo, tsTypeToGo } from "../type";
 import { expressionTransformers } from ".";
 import { sequenceOperands, type SequencedOperand } from "../shared/sequence";
 
@@ -39,7 +39,13 @@ export const arrayLiteralExpressionTransformer: Transformer<GoAST.CompositeLiter
 		}
 		const sequenced = await sequenceOperands(elements, context);
 
-		const literalType = await tsTypeOfNodeToGo(node, context);
+		// `[]` seul a le type `never[]` : on prend le type attendu (`reduceFrom<string[]>([])`).
+		const expectedType = node.elements.length === 0
+			? await context.transpilation.typeChecker.getContextualType(node)
+			: undefined;
+		const literalType = expectedType
+			? await tsTypeToGo(expectedType, node, context)
+			: await tsTypeOfNodeToGo(node, context);
 		if (DEither.isLeft(literalType)) {
 			return literalType;
 		}

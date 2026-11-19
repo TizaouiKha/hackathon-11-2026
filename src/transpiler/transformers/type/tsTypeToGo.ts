@@ -8,6 +8,7 @@ import type { BuildContext } from "../../context/build";
 import { nullShardDependency, undefinedShardDependency } from "../../sharedDependency/defaults";
 import { readEitherIssues } from "../duplojs/either/core/issues";
 import { eitherAnyTypeIdentifier, eitherCoreDependency } from "../duplojs/either/core/sharedDependency";
+import { reduceDependency, reduceParamsType, reduceStepIdentifier } from "../duplojs/array/reduce/sharedDependency";
 
 /**
  * Couche de traduction des types TypeScript vers Go (D-18).
@@ -436,6 +437,13 @@ async function translateObject(
 		return translateArray(type, node, context, inProgress);
 	}
 
+	// Types de `DArray.reduce` (D-23) : l'objet d'outils du callback et ce qu'il renvoie.
+	const reduceType = await translateReduceType(type, node, context, inProgress);
+
+	if (reduceType) {
+		return reduceType;
+	}
+
 	// `Promise<T>` : exécution synchrone (D-11), on garde la valeur attendue.
 	if ((await type.getSymbol())?.name === "Promise") {
 		const awaited = await typeChecker.getAwaitedType(type);
@@ -465,4 +473,68 @@ async function translateObject(
 	}
 
 	return translateStruct(type, node, context, inProgress);
+}
+
+/** Le type vient-il de `@duplojs/lang/dist/array/reduce` ? */
+async function isReduceSymbol(type: Type) {
+	const symbol = await type.getSymbol();
+	const declaration = symbol && (symbol.valueDeclaration ?? DArray.first(symbol.declarations));
+
+	return symbol && declaration && /\/@duplojs\/lang\/dist\/array\/reduce\./u.test(String(declaration.path))
+		? symbol.name
+		: undefined;
+}
+
+/**
+ * - `ReduceNext<O>`, `ReduceExit<E>` : `shard_dependencies.ReduceStep` ;
+ * - `ReduceTheFunctionParams<A, O>` : le struct d'outils de `reduceParamsType`,
+ *   avec `nextPush` seulement si `O` est un tableau.
+ * `undefined` : ce n'est pas un type de `reduce`.
+ */
+async function translateReduceType(
+	type: Type,
+	node: TsAST.Node,
+	context: BuildContext,
+	inProgress: ReadonlySet<number>,
+): Promise<Awaited<GoTypeResult> | undefined> {
+	const name = await isReduceSymbol(type);
+
+	if (name === "ReduceNext" || name === "ReduceExit") {
+		return goType(sharedType(context, reduceDependency.value, reduceStepIdentifier.value));
+	}
+
+	if (name !== "ReduceTheFunctionParams") {
+		return undefined;
+	}
+
+	const { typeChecker } = context.transpilation;
+	const elementType = await typeChecker.getTypeOfPropertyOfType(type, "element");
+	const outputType = await typeChecker.getTypeOfPropertyOfType(type, "lastValue");
+
+	if (!elementType || !outputType) {
+		return context.error(node, "reduce-params-without-element-or-last-value");
+	}
+
+	const element = await translate(elementType, node, context, inProgress);
+	const output = await translate(outputType, node, context, inProgress);
+
+	if (DEither.isLeft(element)) {
+		return element;
+	}
+
+	if (DEither.isLeft(output)) {
+		return output;
+	}
+
+	const outputGo = DEither.unwrapRight(output);
+	const pushElement = "elementType" in outputGo && GoPrinter.renderNode(outputGo).startsWith("[]")
+		? outputGo.elementType as GoType
+		: undefined;
+
+	return goType(reduceParamsType({
+		element: DEither.unwrapRight(element),
+		output: outputGo,
+		pushElement,
+		stepType: sharedType(context, reduceDependency.value, reduceStepIdentifier.value),
+	}));
 }
