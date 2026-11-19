@@ -26,7 +26,7 @@ Chaque étape indique : **le but**, **ce qu'il faut avoir lu**, **ce qu'il faut 
 | 9 | [Valider les projets 01 → 09](#étape-9--valider-les-projets-01--09) | 6, 7, 8 | tout le monde | ✅ les 10 projets (00 à 09) passent |
 | 10 | [Projet 10 (asynchrone)](#étape-10--projet-10-asynchrone) | 9 | *(à remplir)* | 🟨 en cours |
 | 11 | [Performance et finitions](#étape-11--performance-et-finitions) | 9 | | ⬜ |
-| 12 | [Couvrir le TypeScript courant](#étape-12--couvrir-le-typescript-courant-au-delà-des-exercices) | 6 | Claude | 🟨 D-19, D-20, D-21 et R-01 n° 2 faits ; suite : `Record`, `?.`, méthodes |
+| 12 | [Couvrir le TypeScript courant](#étape-12--couvrir-le-typescript-courant-au-delà-des-exercices) | 6 | Claude | 🟨 D-19 à D-22 et R-01 n° 2 faits ; suite : `DArray.reduce`, `DObject`, puis `Record` |
 
 ```
 3 (Either) ──┐
@@ -501,15 +501,25 @@ Go typé et applique un assignateur propre à chaque champ.
 | D-19 | propriétés, éléments, objets littéraux, affectations, boucles, `switch`, template strings, `typeof`, `??`, `Math.*`, déstructuration, `group` sur un objet | ✅ (PR #17) |
 | D-20 | objet `any` utilisé comme objet typé (`JSAs`), propriété lue sur un `any` (`JSGetProperty`), `true` / `false`, déclaration typée des variables locales | ✅ (branche `objets-any`) |
 | **D-21** | **objet plus grand passé à un type plus petit** (`test(user)` avec `test(arg: { name: string })`) : générer l'**objet temporaire** à la compilation | ✅ (PR #21) |
-| **R-01 n° 2** | **ordre d'évaluation** : `f(x, change())`, `x + change()`, `[x, change()]`, `{ a: x, b: change() }` lisent `x` avant `change()`, comme JS | ✅ (branche `r01-ordre-evaluation`) |
+| **R-01 n° 2** | **ordre d'évaluation** : `f(x, change())`, `x + change()`, `[x, change()]`, `{ a: x, b: change() }` lisent `x` avant `change()`, comme JS | ✅ (PR #22) |
+| **D-22** | **fonctions `DArray`** : `filter`, `find`, `findIndex`, `some`, `every`, `includes`, `push`, `concat`, `length` (avec données et curryfiées) | ✅ (branche `darray-fonctions`) |
 
 **D-21 en détail** (voir `DECISIONS.md` et `docs/objets-sous-types-et-any.md`) : `expression/structuralConversion.ts` construit l'objet attendu champ par champ (récursif, tableaux d'objets, champ facultatif → `undefined`, source évaluée une fois). Test : `tests/structural-objects/`. Différence assumée : un objet renvoyé sous le type plus petit n'affiche que les champs de ce type.
 
-**Reste à traiter ensuite** (aujourd'hui refusé avec une erreur claire) :
+**Reste à traiter ensuite** (aujourd'hui refusé avec une erreur claire). Ordre conseillé, d'après l'étude du 19/11 : d'abord ce qu'un code Duplo utilise (bibliothèque `@duplojs/lang`), ensuite le TypeScript impératif.
 
 | Construction | Piste |
 |---|---|
-| objet passé à un `Record<string, T>` (struct → `map`) | prolonger D-21 : une `map` remplie champ par champ. **Prochaine priorité** |
+| `DArray.reduce` (avec `next`, `exit`, `nextPush`), `flatMap`, `sort`, `slice`, `reverse`, `group` | même modèle que D-22 ; `reduce` doit traduire les outils `next` / `exit` |
+| `DObject.*`, `DNumber.*`, `DCommon.*` hors `pipe` / `print` (0 sur 85, 3 sur 57) | un routeur par domaine, comme `DArray` |
+| `print` d'un tableau de plus de 6 nombres | Node les regroupe sur plusieurs lignes (`groupArrayElements` de `util.inspect`) ; notre `Inspect` les met sur une ligne |
+| `Number.NaN`, `Number.MAX_SAFE_INTEGER`… | refusés aujourd'hui (`overloaded-or-callable-object-not-supported-yet`) |
+
+**TypeScript général** :
+
+| Construction | Piste |
+|---|---|
+| objet passé à un `Record<string, T>` (struct → `map`) | prolonger D-21 : une `map` remplie champ par champ |
 | `user?.name`, `values?.[0]` | `JSIsNullish` sur la cible, puis `undefined` ou la lecture |
 | méthodes des tableaux et des chaînes (`values.map`, `text.trim`) | les traduire vers les helpers `DArray` / `DString` existants |
 | `DString.split`, `replace`, `test` | le handler générique `duplojs/string/core/stringFunction.ts` ; regex : la syntaxe Go diffère |

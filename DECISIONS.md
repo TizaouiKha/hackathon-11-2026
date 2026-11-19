@@ -587,6 +587,34 @@ Sourced_test(struct{ Sourced_name string }{
 
 Support de présentation : `docs/objets-sous-types-et-any.md`.
 
+### D-22 · Fonctions `DArray` courantes — ✅ (19/11/2026, branche `darray-fonctions`)
+
+**Pourquoi maintenant** (étude du 19/11) : les exercices n'ont aucun `let`, aucune réaffectation ni boucle, et le lint DuploJS (`@duplojs/code-config`) impose `prefer-const` et `no-param-reassign`. Un code Duplo passe par la bibliothèque `@duplojs/lang`, dont le transpileur ne traduisait que 2 fonctions `DArray` sur 41. C'est là que la couverture Duplo progresse le plus.
+
+**Traduites** (`duplojs/array/iteration/`), avec données et curryfiées (`pipe(list, DArray.filter(f))`) :
+
+| DuploJS | Go (`shard_dependencies`) | Comme JS |
+|---|---|---|
+| `filter(list, f)` | `Filter[T](input, f) []T` | nouvelle slice |
+| `find(list, f)` | `Find[T](input, f) any` | `undefined` si rien ne correspond |
+| `findIndex(list, f)` | `FindIndex[T](input, f) any` | `undefined` si rien ne correspond (DuploJS, pas `-1`) |
+| `some`, `every` | `Some`, `Every` → `bool` | arrêt au premier résultat décisif |
+| `includes(list, v)` | `Includes[T comparable]` | `NaN` est trouvé (SameValueZero) |
+| `push(list, ...v)` | `Push[T](input, values...)` | **copie** : l'entrée n'est pas modifiée |
+| `concat(list, ...lists)` | `Concat[T](input, others...)` | une seule allocation |
+| `length(list)`, `pipe(list, DArray.length)` | `float64(len(list))` | — |
+
+Les callbacks reçoivent `(element, { index, self })`, comme `map`. Le routeur `DArray` est passé d'une chaîne de `DPattern.match` à une **table** (`arrayHandlers`), comme le routeur Either (PR #19), pour ne plus buter sur la limite de 16 arguments de `pipe`.
+
+**Refusé avec une erreur claire** :
+- `filter` avec un type guard qui change le type des éléments (`(A | B)[]` → `A[]`) ;
+- `includes` sur des éléments non comparables en Go (tableaux, maps, fonctions) ;
+- `concat` avec des valeurs isolées ou des tableaux d'un autre type.
+
+**Différence assumée** : `includes` compare deux objets **par contenu** en Go (deux structs égaux) alors que JS compare les **références**.
+
+**Vérifié** : `tests/darray-functions/` (14 cas comparés à Node), plus toute la suite.
+
 ### D-11 · Asynchrone (projet 10) — 🟡
 - Il n'y a aucune vraie entrée/sortie, donc une **exécution synchrone** (`Promise<T>` traduit en `T`) préserve l'ordre et le résultat.
 - Goroutines et channels seulement en bonus, si on a le temps.
