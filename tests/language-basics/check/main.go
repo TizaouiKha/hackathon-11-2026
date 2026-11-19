@@ -57,11 +57,9 @@ func main() {
 	expect("tuple homogène déstructuré", language.Sourced_homogeneousTuple(2, 3), float64(5))
 	expect("tuple hétérogène déstructuré", language.Sourced_heterogeneousTuple(7), float64(7))
 	expect("littéral tableau", language.Sourced_values(), []float64{1, -2, 3})
-	expect("littéral tuple hétérogène", language.Sourced_pair(), struct {
-		V0 string
-		V1 float64
-	}{"answer", 42})
-	expect("const module et tuples", language.Sourced_moduleTuples(), [][2]float64{{1, 2}, {3, 4}})
+	// Depuis D-18.5, un tuple est une slice : `[]any` s'il est hétérogène, `[]T` sinon.
+	expect("littéral tuple hétérogène", language.Sourced_pair(), []any{"answer", float64(42)})
+	expect("const module et tuples", language.Sourced_moduleTuples(), [][]float64{{1, 2}, {3, 4}})
 
 	if failures > 0 {
 		os.Exit(1)

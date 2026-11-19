@@ -2,7 +2,7 @@ import * as DArray from "@duplojs/lang/array";
 import * as DCommon from "@duplojs/lang/common";
 import * as DEither from "@duplojs/lang/either";
 import * as DModeling from "@duplojs/lang/modeling";
-import { GoAST } from "@go";
+import { GoAST, GoPrinter } from "@go";
 import { createTransformer, type Transformer } from "@transformer";
 import { TsAST } from "@typescript";
 import { TypeFlags, type Symbol } from "typescript/async";
@@ -95,7 +95,7 @@ async function transformParameter(
 			continue;
 		}
 
-		const initializer = DModeling.hasTagValue(goType, "[node][type]struct")
+		const read = DModeling.hasTagValue(goType, "[node][type]struct")
 			? GoAST.createSelectorExpression({
 				target: argumentIdentifier,
 				identifier: GoAST.createIdentifier(`V${index}`),
@@ -105,9 +105,30 @@ async function transformParameter(
 				index: GoAST.createIntegerLiteral({ value: BigInt(index) }),
 			});
 
+		// Tuple hétérogène (`[string, number]`) : une slice `[]any` (D-18.5). La
+		// variable doit avoir le type que TS connaît pour sa position : on ouvre
+		// l'élément par assertion (`p[1].(float64)`).
+		const elementType = await tsTypeToGo(
+			await context.transpilation.typeChecker.getTypeAtLocation(element.name),
+			element,
+			context,
+		);
+
+		if (DEither.isLeft(elementType)) {
+			return elementType;
+		}
+
+		const opensAny = GoPrinter.renderNode(goType) === "[]any"
+			&& GoPrinter.renderNode(DEither.unwrapRight(elementType)) !== "any";
+
 		prefix.push(GoAST.createShortVariableDeclarationStatement({
 			identifier: context.createSourceIdentifier(element.name.text),
-			initializer,
+			initializer: opensAny
+				? GoAST.createTypeAssertionExpression({
+					target: read,
+					typeReference: DEither.unwrapRight(elementType),
+				})
+				: read,
 		}));
 	}
 

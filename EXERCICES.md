@@ -255,10 +255,11 @@ puis le `if` appelle la méthode de test du tag et le printer partagé.
 
 **Problèmes posés** : collection de calculs ; tableau de tuples ; déstructuration dans un paramètre.
 
-**Réponse prévue** :
-- le tuple devient `[3]float64` (taille fixe, pas d'allocation) ;
-- le tableau devient `[][3]float64` ;
-- la déstructuration devient un paramètre `p [3]float64` suivi de `one, two, divisor := p[0], p[1], p[2]` au début du corps.
+**Réponse prévue** (mise à jour par D-18.5) :
+- le tuple devient **`[]float64`** (une slice, comme un tableau JS ; plus `[3]float64`) ;
+- le tableau devient `[][]float64` ;
+- la déstructuration devient un paramètre `p []float64` suivi de `one, two, divisor := p[0], p[1], p[2]` au début du corps (étape 6) ;
+- les deux `map` (avec données, puis curryfié dans un `pipe` avec `whenIsRightOtherwise(DString.to, …)` comme callback) sont **déjà traduits et vérifiés** contre l'affichage de Node (`tests/maps-advanced/`). Il manque `const`, la fonction fléchée, la déstructuration et le littéral `"échec"` (étape 6).
 
 **Go visé** : _à remplir_
 
@@ -273,8 +274,9 @@ puis le `if` appelle la méthode de test du tag et le printer partagé.
 **Problème posé** : regrouper des résultats et échouer dès qu'un seul échoue.
 
 **Réponse prévue** : le helper `Group(rs)` boucle sur les résultats, s'arrête au premier `left` et le renvoie ; sinon, il construit le slice des valeurs.
-- **Type de retour** : `Success<number[]> | Left<…, number>`. Le succès est un tableau et l'erreur un nombre, donc on utilise **`Either2[[]float64, float64]`** (D-09.2). C'est le premier projet qui en a besoin.
-- Point à clarifier : quelle gauche est renvoyée (la première ?). À vérifier dans la source de `@duplojs/lang`.
+- **Type de retour** : `Success<number[]> | Left<…, number>`. Depuis D-18, c'est simplement un **`EitherAny`** (`Either2` n'existe plus) : la valeur est un `[]float64` pour le succès, un `float64` pour la gauche, et chaque lecteur l'ouvre avec le type que TypeScript connaît.
+- `calculations` est un `[]EitherAny` (`DArray.map` qui produit des Either : vérifié dans `tests/maps-advanced/`).
+- Point à clarifier : quelle gauche est renvoyée (la première ?). À vérifier dans la source de `@duplojs/lang` (étape 7).
 
 **Go visé** : _à remplir_
 
