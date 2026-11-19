@@ -75,6 +75,8 @@ for (const text of texts) {
 		add("at", [goText, goPosition], Strings.at(text, position));
 		add("substringFrom", [goText, goPosition], Strings.substringFrom(text, position));
 		add("curriedSubstring", [goText, goPosition], Strings.curriedSubstring(text, position));
+		add("curriedCharAt", [goText, goPosition], Strings.curriedCharAt(text, position));
+		add("curriedAt", [goText, goPosition], Strings.curriedAt(text, position));
 
 		for (const end of positions) {
 			const goEnd = goNumber(end);
@@ -93,6 +95,9 @@ for (const text of texts) {
 		add("startsWith", [goText, goSearch], Strings.startsWith(text, search));
 		add("endsWith", [goText, goSearch], Strings.endsWith(text, search));
 		add("curriedIncludes", [goText, goSearch], Strings.curriedIncludes(text, search));
+		add("curriedIndexOf", [goText, goSearch], Strings.curriedIndexOf(text, search));
+		add("curriedStartsWith", [goText, goSearch], Strings.curriedStartsWith(text, search));
+		add("curriedEndsWith", [goText, goSearch], Strings.curriedEndsWith(text, search));
 
 		for (const position of positions) {
 			add("indexOfFrom", [goText, goSearch, goNumber(position)], Strings.indexOfFrom(text, search, position));

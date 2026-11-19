@@ -33,7 +33,7 @@ import { eitherAnyTypeIdentifier, eitherCoreDependency } from "../duplojs/either
  * | `Record<string, T>`, `{ [k: string]: T }` | `map[string]T` (`map[float64]T` si la clé est un number) |
  * | fonction `(a: A, ...r: B[]) => R`        | `func(A, ...B) R` (`void` : pas de retour)  |
  * | `Promise<T>`                             | `T` (D-11, exécution synchrone)             |
- * | paramètre de type `T` non résolu         | `any`                                       |
+ * | type non résolu (`T`, conditionnel)      | sa contrainte (`T extends string` : `string`), sinon `any` |
  * Un type récursif (`interface Node { next: Node }`) : `recursive-type-not-supported-yet`.
  */
 
@@ -112,8 +112,18 @@ async function translate(
 		return goType(sharedType(context, undefinedShardDependency.value, "JSUndefined"));
 	}
 
-	if (has(type, TypeFlags.Any | TypeFlags.Unknown | TypeFlags.TypeParameter)) {
+	if (has(type, TypeFlags.Any | TypeFlags.Unknown)) {
 		return goType(GoAST.builtinTypeReferences.any);
+	}
+
+	// Type non résolu (`T`, `T extends X ? A : B`…) : sa contrainte, calculée par
+	// TypeScript (`S extends string` -> `string`) ; sans contrainte : `any`.
+	if (has(type, TypeFlags.Instantiable)) {
+		const constraint = await context.transpilation.typeChecker.getBaseConstraintOfType(type);
+
+		return constraint && constraint.id !== type.id
+			? translate(constraint, node, context, inProgress)
+			: goType(GoAST.builtinTypeReferences.any);
 	}
 
 	// Union contenant un Either (y compris un Either seul) -> EitherAny.

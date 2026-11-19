@@ -1,14 +1,14 @@
 import { type Transformer } from "@transformer";
-import { GoAST } from "@go";
+import { GoAST, GoPrinter } from "@go";
 import { TsAST } from "@typescript";
 import * as DArray from "@duplojs/lang/array";
 import * as DCommon from "@duplojs/lang/common";
 import * as DEither from "@duplojs/lang/either";
-import { SignatureKind, TypeFlags } from "typescript/async";
+import { SignatureKind, TypeFlags, type Type } from "typescript/async";
 import { type BuildContext } from "../../../../context/build";
 import { undefinedShardDependency } from "../../../../sharedDependency/defaults";
 import { expressionTransformers } from "../../../expression";
-import { tsTypeToGo } from "../../../type/tsTypeToGo";
+import { tsTypeToGo, type GoType } from "../../../type/tsTypeToGo";
 import { jsStringDependency } from "./sharedDependency";
 
 type TransformerResult = Awaited<ReturnType<Transformer<GoAST.Expression>["transformer"]>>;
@@ -24,6 +24,32 @@ export interface StringFunction {
 	/** Arguments après la chaîne, obligatoires puis facultatifs. */
 	readonly required: number;
 	readonly optional: number;
+
+	/**
+	 * Le helper renvoie `any` (`string` ou `JSUndefined`, `float64` ou `JSUndefined`).
+	 * Le type TS du résultat peut être plus précis (`DString.at` sur une chaîne
+	 * `MinCharacters<1>` donne `string`) : le résultat est alors ouvert par assertion.
+	 */
+	readonly returnsAny?: boolean;
+}
+
+const renderedAny = GoPrinter.renderNode(GoAST.builtinTypeReferences.any);
+
+/**
+ * Contrat des transformeurs (D-18.2) : le Go produit a le type Go du type TS de
+ * l'appel. Un helper qui renvoie `any` est ouvert quand ce type est plus précis.
+ */
+function fitResult(spec: StringFunction, result: GoAST.Expression, expected: GoType) {
+	return spec.returnsAny && GoPrinter.renderNode(expected) !== renderedAny
+		? GoAST.createTypeAssertionExpression({
+			target: result,
+			typeReference: expected,
+		})
+		: result;
+}
+
+function goTypeOf(type: Type, node: TsAST.Node, context: BuildContext) {
+	return DCommon.asyncPipe(tsTypeToGo(type, node, context), DEither.unwrapRight);
 }
 
 function helperReference(spec: StringFunction, context: BuildContext) {
@@ -99,10 +125,7 @@ async function translateCurried(
 		return context.error(call, "curried-string-function-without-signature");
 	}
 
-	const returnType = await DCommon.asyncPipe(
-		tsTypeToGo(await signature.getReturnType(), call, context),
-		DEither.unwrapRight,
-	);
+	const returnType = await goTypeOf(await signature.getReturnType(), call, context);
 
 	if (DEither.isLeft(returnType)) {
 		return returnType;
@@ -134,10 +157,14 @@ async function translateCurried(
 				statements: [
 					GoAST.createReturnStatement({
 						values: DCommon.cast([
-							GoAST.createCallExpression({
-								callee: helperReference(spec, context),
-								arguments: [input, ...captured.map((variable) => variable.identifier)],
-							}),
+							fitResult(
+								spec,
+								GoAST.createCallExpression({
+									callee: helperReference(spec, context),
+									arguments: [input, ...captured.map((variable) => variable.identifier)],
+								}),
+								returnType,
+							),
 						]),
 					}),
 				],
@@ -165,6 +192,12 @@ export async function stringFunctionHandler(
 			: context.error(node, "string-function-wrong-argument-count");
 	}
 
+	const expected = await goTypeOf(await context.transpilation.typeChecker.getTypeAtLocation(node), node, context);
+
+	if (DEither.isLeft(expected)) {
+		return expected;
+	}
+
 	const transformed = await DCommon.asyncPipe(transformArguments(node.arguments, context), DEither.unwrapRight);
 
 	if (DEither.isLeft(transformed)) {
@@ -173,9 +206,13 @@ export async function stringFunctionHandler(
 
 	return context.success({
 		before: transformed.before,
-		result: GoAST.createCallExpression({
-			callee: helperReference(spec, context),
-			arguments: transformed.values,
-		}),
+		result: fitResult(
+			spec,
+			GoAST.createCallExpression({
+				callee: helperReference(spec, context),
+				arguments: transformed.values,
+			}),
+			expected,
+		),
 	});
 }

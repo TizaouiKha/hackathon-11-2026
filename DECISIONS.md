@@ -425,9 +425,17 @@ Elles suivent les règles d'ECMAScript : `ToIntegerOrInfinity` (`NaN` donne 0, t
 - la règle **Final_Sigma** : `Σ` en fin de mot devient `ς` (`ΟΔΟΣ` → `οδος`). Le chemin lent ne s'exécute que si le texte contient un `Σ`.
 
 **Vérifié.**
-- `tests/strings/` : **6 040 cas** générés depuis Node par `tests/strings/generate.ts` (9 textes ASCII, accentués, emojis, `ß`, `İ`, ligature, accent combinant, grec × 13 positions, dont `NaN`, `±Infinity`, décimales et négatives × 6 recherches). 0 échec.
+- `tests/strings/` : **6 438 cas** (6 040 à l'origine) générés depuis Node par `tests/strings/generate.ts` (9 textes ASCII, accentués, emojis, `ß`, `İ`, ligature, accent combinant, grec × 13 positions, dont `NaN`, `±Infinity`, décimales et négatives × 6 recherches). 0 échec.
 - Casse comparée sur **4 448 244 cas** (chaque point de code en majuscule et en minuscule, et le sigma placé avant ou après chacun) : 0 écart. Cette vérification lourde n'est pas dans la suite de tests.
 - Les 10 autres tests d'exécution, `check.sh 00`, les types et le lint.
+
+**Corrections après review (19/11/2026).**
+1. **Bug** : `DString.at` renvoyait toujours `any`. Sur une chaîne contrainte (`string & MinCharacters<1>`), TypeScript sait que `at(text, 0)` est une `string`, et le Go ne compilait pas (`cannot use JSStringAt(...) (any) as string`, reproduit avec l'ancien code). Les specs `at` et `indexOf` portent maintenant `returnsAny`. Le handler compare le type Go du helper au type TS de l'appel, et ouvre le résultat par assertion quand ce dernier est plus précis. Le contrat de D-18.2 est respecté : le Go produit a le type Go du type TS.
+2. **Perf** : `JSStringLength` fait **un seul parcours des octets**, sans décoder. Chaque octet de tête compte 1, et un octet `>= 0xF0` compte 1 de plus.
+3. **Perf** : une sous-chaîne non ASCII ne copie plus rien. On cherche les octets de début et de fin, puis `value[start:end]` partage la mémoire. La copie avec `U+FFFD` n'a lieu que si une paire UTF-16 est coupée (`jsStringSplitUnits`).
+4. La recherche de la spec utilise `Object.hasOwn`, pour qu'un nom comme `toString` ne trouve pas `Object.prototype`.
+5. **Trouvé en ajoutant les tests manquants** : `DString.toUpperCase` passé comme fonction a un type générique (`<S extends string>(s: S) => ToUpperCaseOutput<S>`) que `tsTypeToGo` refusait. Un type non résolu (paramètre de type, type conditionnel) est maintenant traduit par **sa contrainte**, calculée par TypeScript (`getBaseConstraintOfType` : `S extends string` donne `string`) ; sans contrainte, il donne `any`.
+6. **Tests** : formes curryfiées des 11 fonctions (`charAt`, `at`, `indexOf`, `startsWith` et `endsWith` ajoutées), `toUpperCase` / `toLowerCase` passées en valeur, et régression du bug 1. Au total, **6 438 cas**.
 
 **Limites.**
 - Une moitié de paire **recollée** (`slice` puis concaténation) ne redonne pas l'emoji : Go a déjà remplacé chaque moitié par `U+FFFD`. Une chaîne JS mal formée n'a pas de représentation UTF-8.

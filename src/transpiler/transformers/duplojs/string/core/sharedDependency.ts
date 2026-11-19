@@ -152,14 +152,45 @@ function forEachCharacter(indexName: string, statements: readonly GoAST.Statemen
 	});
 }
 
+/**
+ * Longueur en unités UTF-16, en **un seul parcours des octets**, sans décoder :
+ * chaque octet de tête (ASCII ou `>= 0xC0`) compte 1, et un octet de tête de
+ * 4 octets (`>= 0xF0`, hors du plan de base) compte 1 de plus (paire UTF-16).
+ * ```go
+ * func JSStringLength(value string) float64 {
+ *     units := 0
+ *     for index := 0; index < len(value); index += 1 {
+ *         if value[index] < 0x80 || value[index] >= 0xC0 { units += 1 }
+ *         if value[index] >= 0xF0 { units += 1 }
+ *     }
+ *     return float64(units)
+ * }
+ * ```
+ */
 function lengthFunction() {
+	const byte = GoAST.createIndexExpression({
+		target: id("value"),
+		index: id("index"),
+	});
+
 	return goFunction({
 		name: "JSStringLength",
 		parameters: [parameter("value", string)],
 		returnType: float64,
 		statements: [
 			declare("units", integer(0)),
-			forEachCharacter("_", countUnit("units")),
+			GoAST.createForStatement({
+				initializer: declare("index", integer(0)),
+				condition: binary(id("index"), "<", call("len", [id("value")])),
+				post: increment("index"),
+				body: block([
+					when(
+						binary(binary(byte, "<", integer(0x80)), "||", binary(byte, ">=", integer(0xC0))),
+						[increment("units")],
+					),
+					when(binary(byte, ">=", integer(0xF0)), [increment("units")]),
+				]),
+			}),
 			returnValue(convert(float64, id("units"))),
 		],
 	});
@@ -182,31 +213,40 @@ function offsetFunction() {
 	});
 }
 
+/** `size := 1 ; if character >= 0x10000 { size = 2 }` */
+const declareSize = [
+	declare("size", integer(1)),
+	when(binary(id("character"), ">=", integer(0x10000)), [assign("size", integer(2))]),
+];
+
 /**
- * Unités UTF-16 `[from, to)` de `value`.
+ * Unités UTF-16 `[from, to)` de `value`, **sans copie** tant qu'aucune paire
+ * UTF-16 n'est coupée : on cherche les octets de début et de fin, puis
+ * `value[start:end]` partage la mémoire de `value`.
  * ```go
  * func jsStringUnits(value string, length int, from int, to int) string {
  *     if from >= to { return "" }
- *     if len(value) == length { return value[from:to] } // ASCII : sans copie
- *     var builder strings.Builder
+ *     if len(value) == length { return value[from:to] } // ASCII
+ *     start := -1
+ *     end := len(value)
+ *     split := false
  *     units := 0
- *     for _, character := range value {
+ *     for index, character := range value {
+ *         if units >= to { end = index; break }
  *         size := 1
  *         if character >= 0x10000 { size = 2 }
- *         if units >= from && units+size <= to {
- *             builder.WriteRune(character)
- *         } else if units < to && units+size > from {
- *             builder.WriteRune(0xFFFD) // moitié d'une paire : ce qu'affiche Node
- *         }
+ *         if start < 0 && units+size > from { start = index; split = units < from }
+ *         if units+size > to { split = true }
  *         units += size
  *     }
- *     return builder.String()
+ *     if !split { return value[start:end] }
+ *     return jsStringSplitUnits(value, from, to) // une paire est coupée
  * }
  * ```
  */
 function unitsFunction() {
 	const units = id("units");
-	const size = binary(units, "+", id("size"));
+	const unitsAfter = binary(units, "+", id("size"));
 
 	return goFunction({
 		name: "jsStringUnits",
@@ -226,6 +266,79 @@ function unitsFunction() {
 					high: id("to"),
 				})),
 			]),
+			declare("start", integer(-1)),
+			declare("end", call("len", [id("value")])),
+			declare("split", GoAST.createBooleanLiteral({ value: false })),
+			declare("units", integer(0)),
+			forEachCharacter("index", [
+				when(binary(units, ">=", id("to")), [
+					assign("end", id("index")),
+					GoAST.createBreakStatement({}),
+				]),
+				...declareSize,
+				when(binary(binary(id("start"), "<", integer(0)), "&&", binary(unitsAfter, ">", id("from"))), [
+					assign("start", id("index")),
+					assign("split", binary(units, "<", id("from"))),
+				]),
+				when(binary(unitsAfter, ">", id("to")), [assign("split", GoAST.createBooleanLiteral({ value: true }))]),
+				GoAST.createCompoundAssignmentStatement({
+					operator: "+=",
+					target: units,
+					value: id("size"),
+				}),
+			]),
+			when(
+				GoAST.createUnaryExpression({
+					operator: "!",
+					operand: id("split"),
+				}),
+				[
+					returnValue(GoAST.createSliceExpression({
+						target: id("value"),
+						low: id("start"),
+						high: id("end"),
+					})),
+				],
+			),
+			returnValue(call("jsStringSplitUnits", [id("value"), id("from"), id("to")])),
+		],
+	});
+}
+
+/**
+ * Cas rare : `from` ou `to` coupe une paire UTF-16. Copie, avec `U+FFFD` pour
+ * chaque moitié de paire (ce qu'affiche Node).
+ * ```go
+ * func jsStringSplitUnits(value string, from int, to int) string {
+ *     var builder strings.Builder
+ *     units := 0
+ *     for _, character := range value {
+ *         size := 1
+ *         if character >= 0x10000 { size = 2 }
+ *         if units >= from && units+size <= to {
+ *             builder.WriteRune(character)
+ *         } else if units < to && units+size > from {
+ *             builder.WriteRune(0xFFFD)
+ *         }
+ *         units += size
+ *     }
+ *     return builder.String()
+ * }
+ * ```
+ */
+function splitUnitsFunction() {
+	const units = id("units");
+	const size = binary(units, "+", id("size"));
+
+	return goFunction({
+		name: "jsStringSplitUnits",
+		parameters: [
+			parameter("value", string),
+			parameter("from", int),
+			parameter("to", int),
+		],
+		returnType: string,
+		statements: [
 			GoAST.createVariableDeclarationZeroValue({
 				identifier: id("builder"),
 				typeReference: GoAST.createPackageTypeReference({
@@ -235,8 +348,7 @@ function unitsFunction() {
 			}),
 			declare("units", integer(0)),
 			forEachCharacter("_", [
-				declare("size", integer(1)),
-				when(binary(id("character"), ">=", integer(0x10000)), [assign("size", integer(2))]),
+				...declareSize,
 				GoAST.createIfStatement({
 					condition: binary(binary(units, ">=", id("from")), "&&", binary(size, "<=", id("to"))),
 					body: block([call("WriteRune", [id("character")], "builder")]),
@@ -647,6 +759,7 @@ export const jsStringDependency = DCommon.memo(() => createSharedDependency({
 		lengthFunction(),
 		offsetFunction(),
 		unitsFunction(),
+		splitUnitsFunction(),
 		toIntegerFunction(),
 		indexFunction(),
 		sliceFunction(),

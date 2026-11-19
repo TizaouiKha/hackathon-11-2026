@@ -56,7 +56,21 @@ func main() {
 		fmt.Println("FAIL lengthFunction")
 	}
 
-	fmt.Printf("%d cas, %d échec(s)\n", len(all)+1, failures)
+	// Passées comme fonctions : la casse complète reste appliquée.
+	if stringsTs.Sourced_upperCaseFunction()("straße") != "STRASSE" || stringsTs.Sourced_lowerCaseFunction()("ΟΔΟΣ") != "οδος" {
+		failures++
+		fmt.Println("FAIL upperCaseFunction / lowerCaseFunction")
+	}
+
+	// Régression de la review : `at` sur une chaîne contrainte est une `string`
+	// en TS ; le Go généré doit donc renvoyer `string` (et compiler).
+	firstOfNonEmpty := stringsTs.Sourced_firstOfNonEmpty
+	if reflect.TypeOf(firstOfNonEmpty).String() != "func(string) string" || firstOfNonEmpty("héllo") != "h" {
+		failures++
+		fmt.Println("FAIL firstOfNonEmpty")
+	}
+
+	fmt.Printf("%d cas, %d échec(s)\n", len(all)+3, failures)
 	if failures > 0 {
 		os.Exit(1)
 	}

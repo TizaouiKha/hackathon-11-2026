@@ -69,9 +69,43 @@ export function curriedIncludes(text: string, search: string) {
 	return DCommon.pipe(text, DString.includes(search));
 }
 
+export function curriedCharAt(text: string, index: number) {
+	return DCommon.pipe(text, DString.charAt(index));
+}
+
+export function curriedAt(text: string, index: number) {
+	return DCommon.pipe(text, DString.at(index));
+}
+
+export function curriedIndexOf(text: string, search: string) {
+	return DCommon.pipe(text, DString.indexOf(search));
+}
+
+export function curriedStartsWith(text: string, search: string) {
+	return DCommon.pipe(text, DString.startsWith(search));
+}
+
+export function curriedEndsWith(text: string, search: string) {
+	return DCommon.pipe(text, DString.endsWith(search));
+}
+
+// Régression (review de la PR) : sur une chaîne contrainte, TS sait que
+// `at(text, 0)` est une `string`, alors que le helper Go renvoie `any`.
+export function firstOfNonEmpty(text: string & DString.MinCharacters<1>) {
+	return DString.at(text, 0);
+}
+
 // Passée comme fonction : le helper Go a déjà la bonne signature.
 export function lengthFunction() {
 	return DString.length;
+}
+
+export function upperCaseFunction() {
+	return DString.toUpperCase;
+}
+
+export function lowerCaseFunction() {
+	return DString.toLowerCase;
 }
 
 // Le cas du prof : une longueur rangée dans un Either.

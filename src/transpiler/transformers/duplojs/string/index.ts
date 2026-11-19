@@ -49,11 +49,13 @@ const stringFunctions: Readonly<Record<string, StringFunction>> = {
 		helper: jsStringIdentifiers.at,
 		required: 1,
 		optional: 0,
+		returnsAny: true,
 	},
 	indexOf: {
 		helper: jsStringIdentifiers.indexOf,
 		required: 1,
 		optional: 1,
+		returnsAny: true,
 	},
 	slice: {
 		helper: jsStringIdentifiers.slice,
@@ -93,7 +95,10 @@ export const duploJSStringExpressionTransformer: Transformer<GoAST.Expression> =
 			return context.notSupport();
 		}
 
-		const stringFunction = stringFunctions[moduleReference.symbol.name];
+		const { name } = moduleReference.symbol;
+
+		// `Object.hasOwn` : un nom comme `toString` ne doit pas trouver `Object.prototype`.
+		const stringFunction = Object.hasOwn(stringFunctions, name) ? stringFunctions[name] : undefined;
 
 		if (stringFunction) {
 			return stringFunctionHandler(node, stringFunction, context);
