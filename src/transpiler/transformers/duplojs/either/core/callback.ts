@@ -2,7 +2,7 @@ import * as DArray from "@duplojs/lang/array";
 import * as DCommon from "@duplojs/lang/common";
 import * as DEither from "@duplojs/lang/either";
 import { GoAST, GoPrinter } from "@go";
-import type { TsAST } from "@typescript";
+import { TsAST } from "@typescript";
 import { SignatureKind } from "typescript/async";
 import type { BuildContext } from "../../../../context/build";
 import { expressionTransformers } from "../../../expression";
@@ -47,13 +47,18 @@ async function readCallbackSignature(node: TsAST.Expression, context: BuildConte
 		return context.error(node, "callback-without-call-signature");
 	}
 
-	// Fonction générique passée en valeur (`DArray.coalescing`) : son Go est typé
-	// par la signature **instanciée** à cet endroit, celle qu'attend le contexte
-	// (`(value: number) => readonly [number]`), pas par `<V>(value: V) => …`.
+	// Fonction **DuploJS** générique passée en valeur (`DArray.coalescing`) : son
+	// handler produit un Go typé par la signature **instanciée** à cet endroit,
+	// celle qu'attend le contexte (`(value: number) => readonly [number]`).
+	// Une fonction générique **du projet** (`identity<T>`) est compilée une fois,
+	// avec la contrainte de `T` (`func(any) any`) : on garde sa déclaration.
 	// Le **nombre** de paramètres reste celui que la fonction déclare : le contexte
 	// peut en fournir plus (`map` passe `(element, { index, self })` à `DString.to`).
 	const isGeneric = (declared.typeParameters?.length ?? 0) > 0;
-	const expectedType = isGeneric ? await typeChecker.getContextualType(node) : undefined;
+	const isDuploJSFunction = isGeneric
+		&& (TsAST.isIdentifier(node) || TsAST.isPropertyAccessExpression(node))
+		&& DEither.isRight(await context.resolveReferenceModule(node, "@duplojs/lang", /^dist\//));
+	const expectedType = isDuploJSFunction ? await typeChecker.getContextualType(node) : undefined;
 	const expected = expectedType && DArray.first(
 		await typeChecker.getSignaturesOfType(expectedType, SignatureKind.Call),
 	);
@@ -189,9 +194,17 @@ export async function transformCallback(
 				statements: [
 					GoAST.createReturnStatement({
 						values: DCommon.cast([
-							GoAST.createCallExpression({
-								callee: calleeVariable.identifier,
-								arguments: forwardedArguments,
+							DCommon.justExec(() => {
+								const forwarded = GoAST.createCallExpression({
+									callee: calleeVariable.identifier,
+									arguments: forwardedArguments,
+								});
+
+								// Fonction du projet générique (`identity<T>` : `func(any) any`) dont
+								// le helper attend un type précis : on ouvre le `any` renvoyé.
+								return opensAny(signature.returnType, returnType)
+									? assertType(forwarded, returnType)
+									: forwarded;
 							}),
 						]),
 					}),

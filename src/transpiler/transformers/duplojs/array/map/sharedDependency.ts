@@ -1,13 +1,14 @@
 import * as DCommon from "@duplojs/lang/common";
 import { GoAST } from "@go";
 import { createSharedDependency } from "@transformer";
+import { jsonTag } from "../../../type/tsTypeToGo";
 
 export const mapIdentifier = GoAST.createIdentifier("Map");
 
 /**
  * Champs du second paramètre du callback (`MapTheFunctionParams` de DuploJS,
  * `{ index: number; self: GenericArray }`). Ils doivent porter les **mêmes noms**
- * que ceux produits par `tsTypeToGo` pour un objet (`createSourceIdentifier`) :
+ * et les **mêmes tags** que ceux produits par `tsTypeToGo` pour un objet :
  * Go ne considère deux structs anonymes identiques que si leurs champs le sont.
  */
 export const mapParamsFieldIdentifiers = {
@@ -22,10 +23,12 @@ export function mapParamsType(arrayType: GoAST.TypeReference | GoAST.Type) {
 			GoAST.createStructField({
 				identifier: mapParamsFieldIdentifiers.index,
 				typeReference: GoAST.builtinTypeReferences.float64,
+				tag: jsonTag("index"),
 			}),
 			GoAST.createStructField({
 				identifier: mapParamsFieldIdentifiers.self,
 				typeReference: arrayType,
+				tag: jsonTag("self"),
 			}),
 		],
 	});

@@ -470,6 +470,12 @@ Passé comme fonction, il devient une fonction Go littérale typée par le type 
 
 **Vérifié** : `tests/arrays/` (14 contrôles, valeurs de Node) couvre `map` avec données, curryfiée, sur un tuple et avec `DString.to`, ainsi que `coalescing` sur une valeur, un tableau et un tuple. Il reproduit aussi les formes **exactes** du projet 02 (`whenIsRight(result, DArray.coalescing)`) et des projets 05 à 07 (`pipe` + `whenIsRightOtherwise(coalescing, …)` + `map(DString.to)`). Les 12 autres tests d'exécution, `check.sh 00`, les types et le lint passent aussi.
 
+**Cas compliqués** (`tests/maps-advanced/`, 9 cas). Chaque résultat est affiché avec `Inspect` (ce que fait `DCommon.print`) et comparé, caractère pour caractère, à `util.inspect` de Node : les deux `map` du projet 08 (helper Either curryfié comme callback, `rightPipe` dans le callback), un `map` qui produit des Either, des `map` imbriqués, un tableau d'objets, un callback générique et un tuple hétérogène. Deux bugs trouvés et corrigés :
+- un **callback générique du projet** (`identity<T>`, compilé en `func(any) any`) : `transformCallback` ne prend la signature instanciée que pour une fonction **DuploJS**, et le wrapper ouvre le `any` renvoyé par assertion ;
+- **affichage d'un objet** : `print` montrait `Sourced_name`. Les champs portent maintenant le tag `json:"<nom TS>"`, que `print` lit déjà. Le tag fait partie du type Go : le struct `{ index, self }` de `Map` porte donc les mêmes tags.
+
+Non couvert : les `Map` JavaScript (`new Map()`) donnent une erreur claire (`recursive-type-not-supported-yet`) et ne sont utilisés par aucun projet. Les déclarations `type X = …` / `interface X` font échouer la transpilation (aucun transformeur) : il faut les ignorer, puisque Go n'en a pas besoin.
+
 **Limites** : le second paramètre `{ index, self }` n'est lisible qu'avec l'accès aux propriétés et la déstructuration de l'étape 6. Les projets 02 à 09 restent bloqués par `const` (étape 6), mais n'attendent plus `DArray`.
 
 ### D-11 · Asynchrone (projet 10) — 🟡

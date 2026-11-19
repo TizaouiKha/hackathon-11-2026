@@ -48,6 +48,14 @@ function has(type: Type, flags: TypeFlags) {
 	return (type.flags & flags) !== 0;
 }
 
+/**
+ * Tag `json:"<nom TS>"` d'un champ de struct. Il fait partie du type Go : deux
+ * structs anonymes ne sont identiques que si leurs tags le sont aussi.
+ */
+export function jsonTag(name: string) {
+	return `json:"${name}"`;
+}
+
 function goType(value: GoType) {
 	return DEither.right("go-type", value);
 }
@@ -391,6 +399,8 @@ async function translateStruct(
 		fields: properties.map((property, position) => GoAST.createStructField({
 			identifier: context.createSourceIdentifier(property.name),
 			typeReference: goFieldTypes[position] ?? GoAST.builtinTypeReferences.any,
+			// Nom TS d'origine : `print` l'affiche (`{ name: 'ada' }`, pas `Sourced_name`).
+			tag: jsonTag(property.name),
 		})),
 	}));
 }

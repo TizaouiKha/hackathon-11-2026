@@ -34,8 +34,11 @@ func main() {
 	expect("readonly string[]", signature(composite.Sourced_frozen), "func([]string) []string")
 	expect("[number, number]", signature(composite.Sourced_pair), "func([]float64) []float64")
 	expect("[string, number]", signature(composite.Sourced_mixed), "func([]interface {}) []interface {}")
-	expect("{ name; age }", signature(composite.Sourced_user), "func(struct { Sourced_name string; Sourced_age float64 }) struct { Sourced_name string; Sourced_age float64 }")
-	expect("objet imbriqué", signature(composite.Sourced_nested), "func(struct { Sourced_tags []string; Sourced_owner struct { Sourced_id float64 } }) struct { Sourced_tags []string; Sourced_owner struct { Sourced_id float64 } }")
+	// Les tags `json:"<nom TS>"` font partie du type : `print` affiche le nom TS.
+	userType := `struct { Sourced_name string "json:\"name\""; Sourced_age float64 "json:\"age\"" }`
+	expect("{ name; age }", signature(composite.Sourced_user), "func("+userType+") "+userType)
+	nestedType := `struct { Sourced_tags []string "json:\"tags\""; Sourced_owner struct { Sourced_id float64 "json:\"id\"" } "json:\"owner\"" }`
+	expect("objet imbriqué", signature(composite.Sourced_nested), "func("+nestedType+") "+nestedType)
 	expect("Record<string, number>", signature(composite.Sourced_dictionary), "func(map[string]float64) map[string]float64")
 	expect("callback", signature(composite.Sourced_apply), "func(func(float64) string) string")
 	expect("callback variadique void", signature(composite.Sourced_variadic), "func(func(...float64)) func(...float64)")
@@ -45,8 +48,8 @@ func main() {
 
 	// Valeurs : les structs anonymes de même forme sont le même type en Go.
 	ada := struct {
-		Sourced_name string
-		Sourced_age  float64
+		Sourced_name string  `json:"name"`
+		Sourced_age  float64 `json:"age"`
 	}{"ada", 36}
 	expect("objet aller-retour", composite.Sourced_user(ada) == ada, true)
 	expect("tuple aller-retour", composite.Sourced_pair([]float64{1, 2}), "[1 2]")
