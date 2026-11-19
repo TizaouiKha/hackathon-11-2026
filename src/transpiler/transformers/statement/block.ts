@@ -5,6 +5,7 @@ import * as DCommon from "@duplojs/lang/common";
 import * as DEither from "@duplojs/lang/either";
 import * as DArray from "@duplojs/lang/array";
 import { statementTransformers } from ".";
+import { isTypeOnlyDeclaration } from "../declaration/typeOnly";
 
 export const blockStatementTransformer: Transformer<GoAST.BlockStatement> = createTransformer(
 	async(node, context) => {
@@ -13,7 +14,8 @@ export const blockStatementTransformer: Transformer<GoAST.BlockStatement> = crea
 		}
 
 		const statements = await DCommon.asyncPipe(
-			node.statements,
+			// Un `type` / `interface` local ne produit rien en Go (D-18.6).
+			DArray.filter(node.statements, (statement) => !isTypeOnlyDeclaration(statement)),
 			DArray.map(
 				async(tsArgument) => DCommon.asyncPipe(
 					context.transform(tsArgument, statementTransformers.value),

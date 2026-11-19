@@ -486,6 +486,46 @@ Non couvert : les `Map` JavaScript (`new Map()`) donnent une erreur claire (`rec
 
 **Limite** : une déclaration de type écrite **dans** une fonction n'est pas encore sautée. Il faut le faire dans `statement/block.ts`, que l'étape 6 est en train de modifier.
 
+### D-19 · Couvrir plus de cas que les exercices — ✅ (19/11/2026, branche `couverture-langage`)
+
+**Méthode.** Les projets 00 à 09 passent, mais ils n'utilisent qu'une petite partie du langage. Une **sonde** a transpilé 24 petits programmes dans le style DuploJS, avec des constructions absentes des exercices : 8 passaient, 16 échouaient. Ce sont ces 16 manques qui ont été traités, par ordre de fréquence dans du vrai code.
+
+| Construction | Go | Fichier |
+|---|---|---|
+| `user.name`, `team.leader.name` | `user.Sourced_name` | `expression/access.ts` |
+| `values.length` / `text.length` | `float64(len(values))` / `JSStringLength(text)` (UTF-16) | idem |
+| `values[i]` (`T \| undefined`) | `JSElementAt(values, i)` : `undefined` hors du tableau | idem |
+| `tuple[1]` | `tuple[1]`, ou `tuple[1].(T)` si la slice est un `[]any` | idem |
+| `record.key`, `record[key]` | `JSMapGet(record, key)` : `undefined` si la clé est absente | idem |
+| `{ name, age: 3 }` | littéral du struct anonyme, type **attendu** préféré (ordre des champs) ; `map[string]T{…}` pour un `Record` | `expression/objectLiteral.ts` |
+| `x = e`, `+=`, `-=`, `*=`, `/=`, `x++`, `x--`, `values[i] = e` | idem en Go | `statement/assignment.ts` |
+| `for (const v of tableau)` | `for _, v := range tableau` | `statement/loop.ts` |
+| `for (const c of texte)` | `for _, r := range texte { c := string(r) }` : des **caractères**, comme JS | idem |
+| `while (c)` | `for c {}` ; si `c` a besoin de préparation, elle est **réévaluée à chaque tour** | idem |
+| `for (let i = 0; i < n; i++)` | `for i := …; …; i += 1` (même règle pour la condition) | idem |
+| `break`, `continue` | idem | idem |
+| `switch` | `switch` Go ; `case` vides regroupés ; **`fallthrough`** quand JS enchaîne faute de `break` | `statement/switch.ts` |
+| `` `${a} b` `` | `JSToString(a) + " b"` (`String()` de JS : nombres, booléens, `null`, tableaux `1,2`) | `expression/javascriptOperators.ts` |
+| `typeof x` | `JSTypeOf(x)` ; le narrowing qui suit passe par l'adaptateur (`x.(string)`) | idem |
+| `a ?? b` | `b` évalué **seulement** si `a` est `null` / `undefined` | idem |
+| `Math.*` | paquet `math` ; `Math.round` et `Math.sign` par helper (JS arrondit `-2.5` à `-2`, Go à `-3`) ; `max` / `min` dépliés | `expression/math.ts` |
+| `(v, { index }) =>`, `const { a, b } = o`, `const [x, y] = t` | une variable par nom, lue sur la source | `expression/destructuring.ts` |
+| `type` / `interface` **dans une fonction** | rien (complète D-18.6) | `statement/block.ts` |
+| `DEither.group({ a, b: () => f() })` | sur place : valeurs évaluées dans l'ordre, fonctions appelées **seulement à leur tour**, premier échec renvoyé, sinon `success` de l'objet | `duplojs/either/group/index.ts` |
+
+**Helpers Go** (`expression/javascriptValues.ts`) : `JSElementAt`, `JSMapGet`, `JSIsNullish`, `JSTypeOf`, `JSToString`. Ils ne servent que quand le type Go est `any`. Quand TypeScript connaît le type, le transformer produit directement le bon type.
+
+**Choix transverses.**
+- **Un module de construction partagé** (`transformers/shared/goBuilder.ts`) pour écrire du Go avec l'AST. Chaque fichier en avait réécrit un ; les nouveaux helpers l'utilisent.
+- **L'adaptateur** (D-18.2) traite un accès à une propriété comme une variable : le Go produit a le type de la **déclaration** du champ, pas le type rétréci.
+- **Modifier un objet est refusé** (`obj.champ = e`, erreur `object-mutation-not-supported-yet`) : un struct Go est **copié**, un objet JS est **partagé**. La modification serait perdue sans prévenir. Une slice partage sa mémoire, donc `values[i] = e` est accepté (hors limites, Go s'arrête là où JS agrandirait le tableau).
+
+**Vérifié.**
+- `tests/language-extended/` : **86 cas** générés depuis Node, affichage comparé caractère pour caractère à `util.inspect`. Ils comprennent, pour la première fois exécuté, **le narrowing après `if (DEither.isLeft(x))`** (limite de D-18.2), `Math.round(-0.4)` qui donne `-0`, un emoji compté comme un seul caractère par `for…of`, et la paresse de `group` (compteur d'appels).
+- Les autres tests d'exécution, les projets 00 à 09, `tsc`, les types et le lint.
+
+**Restent refusés, avec une erreur claire** : `?.`, `do … while`, `for … in`, étiquettes, `%=` et `??=`, décomposition `...`, clé calculée, déstructuration au niveau du module, `text[i]` (utiliser `DString.at`), méthodes des tableaux et des chaînes (`values.map` : utiliser `DArray` / `DString`), `Map` / `Set` de JS, classes.
+
 ### D-11 · Asynchrone (projet 10) — 🟡
 - Il n'y a aucune vraie entrée/sortie, donc une **exécution synchrone** (`Promise<T>` traduit en `T`) préserve l'ordre et le résultat.
 - Goroutines et channels seulement en bonus, si on a le temps.
