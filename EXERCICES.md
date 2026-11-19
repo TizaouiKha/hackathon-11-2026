@@ -1,6 +1,9 @@
 # Suivi des exercices — Hackathon DuploJS TS → Go
 
-Pour chaque projet : ce qu'il demande, notre réponse (la stratégie de traduction), le Go visé et l'état.
+Pour chaque projet : ce qu'il demande, notre réponse (la stratégie de traduction), le Go obtenu et l'état.
+
+**Bilan (19/11, étape 9)** : les projets **00 à 09 passent** (`check.sh`, sortie identique à TypeScript). Il reste le projet 10 (asynchrone, étape 10).
+
 Les décisions transverses sont dans [DECISIONS.md](DECISIONS.md) (références `D-xx`).
 
 États : ⬜ pas commencé · 🟨 en cours · ✅ compile et donne la bonne sortie · ❌ bloqué
@@ -9,14 +12,14 @@ Les décisions transverses sont dans [DECISIONS.md](DECISIONS.md) (références 
 |---|---|---|
 | [00](#projet-00) | Addition, appel de `DEither.success`, préparation d'un appel | ✅ |
 | [01](#projet-01) | Union `Success \| Fail`, `if`, `isRight`, `print` | ✅ |
-| [02](#projet-02) | `whenIsRight` + fonction passée en argument | ⬜ |
-| [03](#projet-03) | `pipe` + forme curryfiée | ⬜ |
-| [04](#projet-04) | Plusieurs `return`, `fail()` | ⬜ |
-| [05](#projet-05) | `whenIsRightOtherwise`, fonctions fléchées, `DArray.map`, `DString.to` | ⬜ |
-| [06](#projet-06) | `left("info", v)`, ternaire, `matchInformation` | ⬜ |
-| [07](#projet-07) | `rightPipe` | ⬜ |
-| [08](#projet-08) | Tuples, déstructuration, `map` imbriqués | ⬜ |
-| [09](#projet-09) | `group` (transaction) | ⬜ |
+| [02](#projet-02) | `whenIsRight` + fonction passée en argument | ✅ |
+| [03](#projet-03) | `pipe` + forme curryfiée | ✅ |
+| [04](#projet-04) | Plusieurs `return`, `fail()` | ✅ |
+| [05](#projet-05) | `whenIsRightOtherwise`, fonctions fléchées, `DArray.map`, `DString.to` | ✅ |
+| [06](#projet-06) | `left("info", v)`, ternaire, `matchInformation` | ✅ |
+| [07](#projet-07) | `rightPipe` | ✅ |
+| [08](#projet-08) | Tuples, déstructuration, `map` imbriqués | ✅ |
+| [09](#projet-09) | `group` (transaction) | ✅ |
 | [10](#projet-10) | `async` / `await`, `rightAsyncPipe`, `asyncGroup`, `asyncPipe` | ⬜ |
 
 **Valider un projet** (sous WSL, voir D-01 et D-14) :
@@ -73,11 +76,12 @@ Objet Fail (projet 04) :
 
 **Expressions**
 - ✔ identifiant (y compris entre fichiers) · ✔ littéral numérique → `float64` · ✔ binaire arithmétique
-- ✔ comparaisons, `||`, `&&` · ✔ littéral de chaîne · ✔ unaires · ✔ parenthèses · ✔ ternaire · ✔ fonction fléchée · ✔ littéral de tableau/tuple · littéral d'objet (handlers de `matchInformation`) · `await`
+- ✔ comparaisons, `||`, `&&` · ✔ littéral de chaîne · ✔ unaires · ✔ parenthèses · ✔ ternaire · ✔ fonction fléchée · ✔ littéral de tableau/tuple · ✔ littéral d'objet des handlers de `matchInformation` · ✔ adaptation au narrowing et élargissement vers un Either (D-18.2)
+- ⬜ accès à une propriété (`obj.name`) · ⬜ littéral d'objet général · ⬜ `await` (projet 10)
 
 **Types**
 - ✔ `number`
-- ✔ `string` · ✔ tableau `T[]` · ✔ tuple `[A, B, C]` · ✔ unions d'`Either` · ✔ `Promise<T>` · ✔ type de retour inféré (via le checker)
+- ✔ `string` · ✔ `boolean` · ✔ `null` / `undefined` · ✔ tableau `T[]` · ✔ tuple (une slice, D-18.5) · ✔ objet (struct anonyme) · ✔ `Record<string, T>` · ✔ fonction · ✔ unions d'`Either` (`EitherAny`) · ✔ `Promise<T>` · ✔ type de retour inféré · ✔ `type` / `interface` ignorés (D-18.6). Le tout dans **`tsTypeToGo`** (D-18).
 
 **Paramètres**
 - identifiant simple ✔ · déstructuration de tuple `[a, b, c]` ✔
@@ -85,17 +89,16 @@ Objet Fail (projet 04) :
 **Validation de l'étape 6** : `tests/language-basics/` couvre 32 cas à
 l'exécution, dont les variables module/locales, les deux branches d'un ternaire,
 les deux formes de fonction fléchée, les tableaux et les tuples homogènes et
-hétérogènes. Le projet 01 passe ; les projets suivants sont maintenant bloqués
-par `DArray.map` ou `DArray.coalescing` (étape 8).
+hétérogènes.
 
 **Domaine DuploJS**
 - Either :
-  - ✔ `success` / `Success<T>` (bug B-01) ;
-  - `fail` · `left` · `isRight` · `whenIsRight` · `whenIsRightOtherwise` · `matchInformation` · `rightPipe` · `group` · `rightAsyncPipe` · `asyncGroup` ;
-  - types `Fail`, `Left`.
-- Common : `pipe` · `asyncPipe` · `print`
-- Array : `coalescing` · `map`
-- String : `to`
+  - ✔ `success` · ✔ `fail` · ✔ `left` · ✔ `right` · ✔ `error` · ✔ `isRight` · ✔ `isLeft` · ✔ `unwrapRight` · ✔ `whenIsRight` · ✔ `whenIsRightOtherwise` · ✔ `matchInformation` · ✔ `rightPipe` · ✔ `group` (tableau) ;
+  - ⬜ `rightAsyncPipe` · ⬜ `asyncGroup` (projet 10) ;
+  - ✔ types `Success`, `Fail`, `Error`, `Left`, `Right` et leurs unions.
+- Common : ✔ `pipe` · ✔ `print` · ⬜ `asyncPipe` (projet 10)
+- Array : ✔ `coalescing` · ✔ `map`
+- String : ✔ `to` · ✔ `length`, `slice`, `substring`, `charAt`, `at`, `indexOf`, `includes`, `startsWith`, `endsWith`, `toUpperCase`, `toLowerCase` (D-18.4)
 
 ---
 
@@ -136,12 +139,11 @@ func Sourced_add(Sourced_one float64, Sourced_two float64) (shard_dependencies.E
 
 **Problèmes posés** : représenter un retour à plusieurs variantes ; traduire un `if`.
 
-**Réponse prévue** :
-- l'union d'`Either` devient une struct avec un tag (D-09) ;
-- `return success(...)` est converti vers ce type d'union ;
-- `isRight(r)` devient une comparaison de tag ;
-- `print` passe par `json.Marshal` puis l'affichage (à vérifier par rapport à la sortie TS) ;
-- `const result` est déclaré au niveau du module (D-07).
+**Réponse** :
+- l'union d'`Either` devient un `EitherAny` (tag entier + valeur, D-09 et D-18) ;
+- `isRight(r)` devient `r.Tag.IsRight()` (une table indexée par le tag) ;
+- `print` reproduit `util.inspect` de Node par réflexion (étape 4), sans JSON ;
+- `const result` est déclaré au niveau du module et initialisé dans `init()` (D-07).
 
 **Go obtenu** : `result` est une variable de package initialisée dans `init()`,
 puis le `if` appelle la méthode de test du tag et le printer partagé.
@@ -156,10 +158,10 @@ puis le `if` appelle la méthode de test du tag et le printer partagé.
 
 **Problème posé** : un appel qui reçoit une fonction et ne l'applique qu'à la valeur `Right`.
 
-**Réponse prévue** :
-- appel du helper générique `WhenIsRight(r, coalescing)` (D-09.3), qui applique `coalescing` seulement si `r` est une droite ;
-- `coalescing` devient une shared dependency générique.
-- Point à clarifier : le type de sortie, qui est l'union des deux branches.
+**Réponse** :
+- appel du helper générique `WhenIsRight(r, f)` (D-09.3), qui applique `f` seulement si `r` est une droite, et range le résultat brut avec `TagValue` (D-16) ;
+- `DArray.coalescing`, passé comme fonction, devient une fonction Go littérale typée par le contexte. Le « tableau ou valeur ? » est **décidé à la compilation** (`number` → `[]float64{v}`, D-18.5) ;
+- le type de sortie (`readonly [number] | Fail`) est un `EitherAny`.
 
 **Go obtenu** (`projects/02/dist/index.ts/index.ts.go`, étape 9) :
 
@@ -205,7 +207,7 @@ func init() {
 
 **Problème posé** : une composition en pipe, avec une forme curryfiée.
 
-**Réponse prévue** : dérouler le pipe à la compilation (D-10) : `t1 := result`, puis `t2 := WhenIsRight(t1, coalescing)`. Chaque étape curryfiée reçoit la valeur de l'étape précédente comme premier argument, ce qui ramène au projet 02.
+**Réponse** : dérouler le pipe à la compilation (D-10) : `t1 := result`, puis `t2 := WhenIsRight(t1, coalescing)`. Chaque étape curryfiée reçoit la valeur de l'étape précédente comme premier argument, ce qui ramène au projet 02.
 
 **Go obtenu** (`projects/03/dist/index.ts/index.ts.go`, étape 9) :
 
@@ -256,10 +258,10 @@ func init() {
 
 **Problème posé** : plusieurs chemins de retour.
 
-**Réponse prévue** :
-- le type de retour est inféré par le checker (`Fail | Success<number>`) et devient le type d'union de D-09 ;
-- chaque `return` est converti vers ce type ;
-- `===` devient `==`.
+**Réponse** :
+- le type de retour est inféré par le checker (`Fail | Success<number>`) et devient un `EitherAny` ;
+- chaque `return` produit directement un `EitherAny` (`fail` et `success` sont des littéraux de struct) ;
+- `===` devient `==`, et `-1` passe par le moins unaire (étape 6).
 
 **Go obtenu** (`projects/04/dist/index.ts/index.ts.go`, étape 9) :
 
@@ -311,10 +313,11 @@ func init() {
 
 **Problèmes posés** : traiter différemment chaque issue ; transformer chaque élément d'une collection.
 
-**Réponse prévue** :
+**Réponse** :
 - `whenIsRightOtherwise` devient un appel au helper `WhenIsRightOtherwise(r, f, g)` (D-09.3) ;
-- la fonction fléchée `() => [-12]` devient un `func` littéral Go ;
-- `DArray.map` devient une boucle `for range` qui remplit un slice pré-alloué (`make([]T, 0, len(xs))`) ;
+- la fonction fléchée `() => [-12]` devient un `func` littéral Go, enveloppé parce qu'elle déclare moins de paramètres que ce qu'elle reçoit ;
+- `readonly [number] | number[]` est une seule slice `[]float64` (D-18.5) ;
+- `DArray.map` devient le helper `Map[T, U]`, qui alloue la slice de sortie une seule fois à sa taille ;
 - `DString.to` utilise un formatage fidèle à JS (D-12).
 
 **Go obtenu** (`projects/05/dist/index.ts/index.ts.go`, étape 9) :
@@ -384,8 +387,8 @@ func init() {
 
 **Problèmes posés** : erreurs identifiées avec leur contexte ; expression ternaire.
 
-**Réponse prévue** :
-- l'information devient une constante de tag, avec sa valeur dans `Value` ;
+**Réponse** :
+- l'information devient une constante de tag (`TagLeftNegativeOperand`), avec sa valeur dans `Value` ;
 - le ternaire devient `var t T; if cond { t = a } else { t = b }`, placé dans `before` ;
 - `matchInformation` devient `MatchInformation(r, handlers)`, où `handlers` est un slice de fonctions rangé par numéro de tag : la fonction de `"negative-operand"` est rangée à l'indice `TagNegativeOperand`, etc. (D-09.3).
 
@@ -475,9 +478,9 @@ func init() {
 
 **Problème posé** : enchaîner des opérations dépendantes et s'arrêter au premier échec.
 
-**Réponse prévue** :
+**Réponse** :
 - `rightPipe(r, f, g)` devient des appels emboîtés au helper à deux arguments `RightThen(RightThen(r, f), g)`. `RightThen` renvoie `r` tel quel si c'est une gauche, sinon `f(r.Value)` (D-09.3) ;
-- le type final est l'union de toutes les gauches et de la dernière droite.
+- le type final (l'union de toutes les gauches et de la dernière droite) est un `EitherAny`.
 
 **Go obtenu** (`projects/07/dist/index.ts/index.ts.go`, étape 9) :
 
@@ -571,11 +574,11 @@ func init() {
 
 **Problèmes posés** : collection de calculs ; tableau de tuples ; déstructuration dans un paramètre.
 
-**Réponse prévue** (mise à jour par D-18.5) :
+**Réponse** (D-18.5) :
 - le tuple devient **`[]float64`** (une slice, comme un tableau JS ; plus `[3]float64`) ;
 - le tableau devient `[][]float64` ;
 - la déstructuration devient un paramètre `p []float64` suivi de `one, two, divisor := p[0], p[1], p[2]` au début du corps (étape 6) ;
-- les deux `map` (avec données, puis curryfié dans un `pipe` avec `whenIsRightOtherwise(DString.to, …)` comme callback) sont **déjà traduits et vérifiés** contre l'affichage de Node (`tests/maps-advanced/`). Il manque `const`, la fonction fléchée, la déstructuration et le littéral `"échec"` (étape 6).
+- les deux `map` (avec données, puis curryfié dans un `pipe` avec `whenIsRightOtherwise(DString.to, …)` comme callback) passent par le helper `Map`, et sont aussi vérifiés contre l'affichage de Node dans `tests/maps-advanced/`.
 
 **Go obtenu** (`projects/08/dist/index.ts/index.ts.go`, étape 9) :
 
@@ -666,10 +669,10 @@ func init() {
 
 **Problème posé** : regrouper des résultats et échouer dès qu'un seul échoue.
 
-**Réponse prévue** : le helper `Group(rs)` boucle sur les résultats, s'arrête au premier `left` et le renvoie ; sinon, il construit le slice des valeurs.
+**Réponse** : le helper `Group[T](rs []EitherAny)` boucle sur les résultats, s'arrête au **premier** échec et le renvoie ; sinon, il renvoie un `success` de la slice des valeurs (comme DuploJS, vérifié dans sa source).
 - **Type de retour** : `Success<number[]> | Left<…, number>`. Depuis D-18, c'est simplement un **`EitherAny`** (`Either2` n'existe plus) : la valeur est un `[]float64` pour le succès, un `float64` pour la gauche, et chaque lecteur l'ouvre avec le type que TypeScript connaît.
 - `calculations` est un `[]EitherAny` (`DArray.map` qui produit des Either : vérifié dans `tests/maps-advanced/`).
-- Point à clarifier : quelle gauche est renvoyée (la première ?). À vérifier dans la source de `@duplojs/lang` (étape 7).
+- Limite : DuploJS accepte aussi un **objet** de résultats, et des **fonctions** évaluées à la demande. La version Go ne gère que le tableau de résultats, la seule forme utilisée par les projets.
 
 **Go obtenu** (`projects/09/dist/index.ts/index.ts.go`, étape 9) :
 
