@@ -3,6 +3,7 @@ import { duploJSEitherDeclarationTransformer, duploJSEitherExpressionTransformer
 import { duploJSCommonExpressionTransformer } from "./common";
 import { duploJSStringExpressionTransformer } from "./string";
 import { duploJSArrayExpressionTransformer } from "./array";
+import { duploJSObjectExpressionTransformer } from "./object";
 import type { GoAST } from "@go";
 import { type Transformer } from "@transformer";
 
@@ -15,6 +16,7 @@ export const duploJSExpressionTransformers = DCommon.memo(
 		duploJSCommonExpressionTransformer,
 		duploJSStringExpressionTransformer,
 		duploJSArrayExpressionTransformer,
+		duploJSObjectExpressionTransformer,
 	],
 );
 export const duploJSStatementTransformers = DCommon.memo(
