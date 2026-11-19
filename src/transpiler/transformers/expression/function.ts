@@ -2,13 +2,14 @@ import * as DArray from "@duplojs/lang/array";
 import * as DCommon from "@duplojs/lang/common";
 import * as DEither from "@duplojs/lang/either";
 import * as DModeling from "@duplojs/lang/modeling";
-import { GoAST, GoPrinter } from "@go";
+import { GoAST } from "@go";
 import { createTransformer, type Transformer } from "@transformer";
 import { TsAST } from "@typescript";
 import { TypeFlags, type Symbol } from "typescript/async";
 import { blockStatementTransformer } from "../statement/block";
 import { tsTypeToGo } from "../type";
 import { expressionTransformers } from ".";
+import { destructure } from "./destructuring";
 
 interface TransformedParameter {
 	argument: GoAST.FunctionArgument;
@@ -72,65 +73,20 @@ async function transformParameter(
 		});
 	}
 
-	if (!TsAST.isArrayBindingPattern(parameter.name)) {
-		return context.error(parameter, "arrow-parameter-binding-pattern-not-supported");
-	}
-
+	// `([a, b]) =>`, `(value, { index }) =>` : module commun de déstructuration (D-19).
 	const argumentIdentifier = context.generateIdentifier();
-	const prefix: GoAST.Statement[] = [];
-	for (const [index, element] of parameter.name.elements.entries()) {
-		if (TsAST.isOmittedExpression(element)) {
-			return context.error(element, "tuple-binding-element-not-supported");
-		}
-		if (
-			!element.name
-			|| !TsAST.isIdentifier(element.name)
-			|| element.dotDotDotToken
-			|| element.initializer
-		) {
-			return context.error(element, "tuple-binding-element-not-supported");
-		}
-		const elementSymbol = await context.transpilation.typeChecker.getSymbolAtLocation(element.name);
-		if (!elementSymbol || !usedSymbols.has(elementSymbol)) {
-			continue;
-		}
+	const destructured = await destructure({
+		pattern: parameter.name,
+		source: argumentIdentifier,
+		sourceType: goType,
+		usedSymbols,
+	}, context);
 
-		const read = DModeling.hasTagValue(goType, "[node][type]struct")
-			? GoAST.createSelectorExpression({
-				target: argumentIdentifier,
-				identifier: GoAST.createIdentifier(`V${index}`),
-			})
-			: GoAST.createIndexExpression({
-				target: argumentIdentifier,
-				index: GoAST.createIntegerLiteral({ value: BigInt(index) }),
-			});
-
-		// Tuple hétérogène (`[string, number]`) : une slice `[]any` (D-18.5). La
-		// variable doit avoir le type que TS connaît pour sa position : on ouvre
-		// l'élément par assertion (`p[1].(float64)`).
-		const elementType = await tsTypeToGo(
-			await context.transpilation.typeChecker.getTypeAtLocation(element.name),
-			element,
-			context,
-		);
-
-		if (DEither.isLeft(elementType)) {
-			return elementType;
-		}
-
-		const opensAny = GoPrinter.renderNode(goType) === "[]any"
-			&& GoPrinter.renderNode(DEither.unwrapRight(elementType)) !== "any";
-
-		prefix.push(GoAST.createShortVariableDeclarationStatement({
-			identifier: context.createSourceIdentifier(element.name.text),
-			initializer: opensAny
-				? GoAST.createTypeAssertionExpression({
-					target: read,
-					typeReference: DEither.unwrapRight(elementType),
-				})
-				: read,
-		}));
+	if (DEither.isLeft(destructured)) {
+		return destructured;
 	}
+
+	const prefix = DEither.unwrapRight(destructured);
 
 	return DEither.success<TransformedParameter>({
 		argument: GoAST.createFunctionArgument({

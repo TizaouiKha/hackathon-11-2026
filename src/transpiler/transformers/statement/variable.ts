@@ -6,6 +6,7 @@ import { createTransformer, type Transformer } from "@transformer";
 import { TsAST } from "@typescript";
 import { expressionTransformers } from "../expression";
 import { tsTypeOfNodeToGo } from "../type";
+import { destructure } from "../expression/destructuring";
 
 type VariableResult = GoAST.AssignmentStatement | GoAST.VariableDeclarationZeroValue;
 
@@ -16,6 +17,53 @@ export const variableStatementTransformer: Transformer<VariableResult> = createT
 		}
 
 		const declaration = DArray.first(node.declarationList.declarations);
+
+		// Déstructuration `const { a, b } = objet` / `const [x, y] = tuple` dans une fonction (D-19).
+		if (
+			declaration?.initializer
+			&& (TsAST.isObjectBindingPattern(declaration.name) || TsAST.isArrayBindingPattern(declaration.name))
+		) {
+			if (TsAST.isSourceFile(node.parent)) {
+				return context.error(node, "module-destructuring-not-supported-yet");
+			}
+
+			const source = await DCommon.asyncPipe(
+				context.transform(declaration.initializer, expressionTransformers.value),
+				DEither.unwrapRight,
+			);
+			if (DEither.isLeft(source)) {
+				return source;
+			}
+
+			const sourceType = await tsTypeOfNodeToGo(declaration.initializer, context);
+			if (DEither.isLeft(sourceType)) {
+				return sourceType;
+			}
+
+			const sourceIdentifier = context.generateIdentifier();
+			const variables = await destructure({
+				pattern: declaration.name,
+				source: sourceIdentifier,
+				sourceType: DEither.unwrapRight(sourceType),
+			}, context);
+			if (DEither.isLeft(variables)) {
+				return variables;
+			}
+
+			return context.success({
+				before: DArray.concat(source.before, [
+					GoAST.createShortVariableDeclarationStatement({
+						identifier: sourceIdentifier,
+						initializer: source.result,
+					}),
+				], DEither.unwrapRight(variables)),
+				result: GoAST.createAssignmentStatement({
+					targets: DCommon.cast([GoAST.createIdentifier("_")]),
+					values: DCommon.cast([sourceIdentifier]),
+				}),
+			});
+		}
+
 		if (!declaration || !TsAST.isIdentifier(declaration.name) || !declaration.initializer) {
 			return context.error(node, "variable-declaration-must-have-one-identifier-and-an-initializer");
 		}

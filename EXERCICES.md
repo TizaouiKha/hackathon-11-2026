@@ -73,18 +73,20 @@ Objet Fail (projet 04) :
 **Instructions**
 - ✔ appel autonome · ✔ `return expr` · ✔ bloc
 - ✔ `const` / `let` avec un identifiant et un initialiseur (variable locale et variable du module, D-07) · ✔ `if` / `else` · ✔ `return` sans valeur
+- ✔ affectation, `+=`, `++` · ✔ `for…of`, `while`, `for`, `break`, `continue` · ✔ `switch` (avec `fallthrough`) · ✔ déstructuration de tableau et d'objet (D-19)
 
 **Expressions**
 - ✔ identifiant (y compris entre fichiers) · ✔ littéral numérique → `float64` · ✔ binaire arithmétique
 - ✔ comparaisons, `||`, `&&` · ✔ littéral de chaîne · ✔ unaires · ✔ parenthèses · ✔ ternaire · ✔ fonction fléchée · ✔ littéral de tableau/tuple · ✔ littéral d'objet des handlers de `matchInformation` · ✔ adaptation au narrowing et élargissement vers un Either (D-18.2)
-- ⬜ accès à une propriété (`obj.name`) · ⬜ littéral d'objet général · ⬜ `await` (projet 10)
+- ✔ accès à une propriété et à un élément · ✔ `.length` · ✔ littéral d'objet · ✔ template string · ✔ `typeof` · ✔ `??` · ✔ `Math.*` (D-19)
+- ⬜ `?.` · ⬜ `await` (projet 10)
 
 **Types**
 - ✔ `number`
 - ✔ `string` · ✔ `boolean` · ✔ `null` / `undefined` · ✔ tableau `T[]` · ✔ tuple (une slice, D-18.5) · ✔ objet (struct anonyme) · ✔ `Record<string, T>` · ✔ fonction · ✔ unions d'`Either` (`EitherAny`) · ✔ `Promise<T>` · ✔ type de retour inféré · ✔ `type` / `interface` ignorés (D-18.6). Le tout dans **`tsTypeToGo`** (D-18).
 
 **Paramètres**
-- identifiant simple ✔ · déstructuration de tuple `[a, b, c]` ✔
+- identifiant simple ✔ · déstructuration de tuple `[a, b, c]` ✔ · déstructuration d'objet `{ index }` ✔
 
 **Validation de l'étape 6** : `tests/language-basics/` couvre 32 cas à
 l'exécution, dont les variables module/locales, les deux branches d'un ternaire,
@@ -93,7 +95,7 @@ hétérogènes.
 
 **Domaine DuploJS**
 - Either :
-  - ✔ `success` · ✔ `fail` · ✔ `left` · ✔ `right` · ✔ `error` · ✔ `isRight` · ✔ `isLeft` · ✔ `unwrapRight` · ✔ `whenIsRight` · ✔ `whenIsRightOtherwise` · ✔ `matchInformation` · ✔ `rightPipe` · ✔ `group` (tableau) ;
+  - ✔ `success` · ✔ `fail` · ✔ `left` · ✔ `right` · ✔ `error` · ✔ `isRight` · ✔ `isLeft` · ✔ `unwrapRight` · ✔ `whenIsRight` · ✔ `whenIsRightOtherwise` · ✔ `matchInformation` · ✔ `rightPipe` · ✔ `group` (tableau et objet) ;
   - ⬜ `rightAsyncPipe` · ⬜ `asyncGroup` (projet 10) ;
   - ✔ types `Success`, `Fail`, `Error`, `Left`, `Right` et leurs unions.
 - Common : ✔ `pipe` · ✔ `print` · ⬜ `asyncPipe` (projet 10)
@@ -672,7 +674,7 @@ func init() {
 **Réponse** : le helper `Group[T](rs []EitherAny)` boucle sur les résultats, s'arrête au **premier** échec et le renvoie ; sinon, il renvoie un `success` de la slice des valeurs (comme DuploJS, vérifié dans sa source).
 - **Type de retour** : `Success<number[]> | Left<…, number>`. Depuis D-18, c'est simplement un **`EitherAny`** (`Either2` n'existe plus) : la valeur est un `[]float64` pour le succès, un `float64` pour la gauche, et chaque lecteur l'ouvre avec le type que TypeScript connaît.
 - `calculations` est un `[]EitherAny` (`DArray.map` qui produit des Either : vérifié dans `tests/maps-advanced/`).
-- Limite : DuploJS accepte aussi un **objet** de résultats, et des **fonctions** évaluées à la demande. La version Go ne gère que le tableau de résultats, la seule forme utilisée par les projets.
+- DuploJS accepte aussi un **objet** de résultats, avec des **fonctions** appelées à la demande : traduit depuis D-19 (`group({ a, b: () => f() })`). Le tableau de fonctions n'est pas encore traduit.
 
 **Go obtenu** (`projects/09/dist/index.ts/index.ts.go`, étape 9) :
 

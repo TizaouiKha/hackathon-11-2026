@@ -14,11 +14,16 @@ import { parenthesizedExpressionTransformer } from "./parenthesized";
 import { conditionalExpressionTransformer } from "./conditional";
 import { arrowFunctionTransformer } from "./function";
 import { arrayLiteralExpressionTransformer } from "./arrayLiteral";
+import { elementAccessTransformer, propertyAccessTransformer } from "./access";
+import { objectLiteralTransformer } from "./objectLiteral";
+import { nullishCoalescingTransformer, templateLiteralTransformer, typeOfTransformer } from "./javascriptOperators";
+import { mathTransformer } from "./math";
 
 /** Transformeurs bruts : chacun produit le Go du type TS de son expression. */
 export const rawExpressionTransformers = DCommon.memo(
 	(): readonly Transformer<GoAST.Expression>[] => [
 		...duploJSExpressionTransformers.value,
+		mathTransformer,
 		...sharedExpressionTransformers.value,
 		nullishLiteralTransformer,
 		identifierTransformer,
@@ -29,6 +34,12 @@ export const rawExpressionTransformers = DCommon.memo(
 		conditionalExpressionTransformer,
 		arrowFunctionTransformer,
 		arrayLiteralExpressionTransformer,
+		objectLiteralTransformer,
+		templateLiteralTransformer,
+		typeOfTransformer,
+		nullishCoalescingTransformer,
+		propertyAccessTransformer,
+		elementAccessTransformer,
 		binaryExpressionTransformer,
 	],
 );

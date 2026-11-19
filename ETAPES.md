@@ -124,7 +124,7 @@ tests/<nom>/
 - `pnpm test:runtime` lance tous les tests, et `./.commands/test-runtime.sh either` un seul.
 - Le script transpile le dossier, copie `check/` dans `dist/`, puis lance `go vet` et `go run ./check`.
 - `check/main.go` importe le package transpilé (par exemple `shapes "duplojs.local/transpiled/shapes.ts"`) et appelle les fonctions sous leur nom Go (`shapes.Sourced_maFonction(...)`). Il doit **sortir avec un code d'erreur** si un contrôle échoue (`os.Exit(1)`).
-- Exemple complet : `tests/either/` (étape 3). Liste actuelle (16 tests) : `arrays`, `composite-types`, `dstring-to`, `either`, `either-helpers`, `js-number-to-string`, `js-operators`, `language-basics`, `maps-advanced`, `narrowing`, `pipe`, `preparation`, `print`, `strings`, `ts-types`, `type-declarations`.
+- Exemple complet : `tests/either/` (étape 3). Liste actuelle (17 tests) : `arrays`, `composite-types`, `dstring-to`, `either`, `either-helpers`, `js-number-to-string`, `js-operators`, `language-basics`, `language-extended`, `maps-advanced`, `narrowing`, `pipe`, `preparation`, `print`, `strings`, `ts-types`, `type-declarations`.
 - **Valeurs attendues** : calcule-les en exécutant **le même TypeScript avec `tsx`**, ne les écris pas de tête. Pour beaucoup de cas, génère `check/cases.go` depuis Node (exemple : `tests/strings/generate.ts`, 6 438 cas). Pour un affichage, compare `shard.Inspect(x)` à `util.inspect(x)` de Node (exemple : `tests/maps-advanced/`).
 - **Piège** : dans `check/main.go`, une constante Go rangée dans un `any` garde son type par défaut (`Value: 2` est un `int`). Le Go transpilé lit un `float64` : écris `float64(2)`.
 - **Variante « générateur »** : si le dossier contient un `check.ts` (et pas de `check/main.go`), le script le lance seul avec `tsx`. Il génère et exécute lui-même son Go, ce qui permet de tester une **shared dependency** sans TypeScript à transpiler. Exemple : `tests/js-number-to-string/` imprime le helper Go tel que le transpileur le génère, puis le compare à `String(x)` de Node sur 2 034 nombres.
@@ -315,13 +315,15 @@ Les règles à reproduire :
 | `[a, b]` (tableau ou tuple) | `[]T{a, b}` ; `[]any{a, b}` si les éléments ont des types Go différents | 05+ | ✅ |
 | tuple `[number, number, number]` | **`[]float64`** (une slice, D-18.5) : **pas** `[3]float64` | 08, 09 | ✅ type déjà traduit |
 | paramètre `([a, b, c]) =>` | paramètre `p []float64`, puis `a, b, c := p[0], p[1], p[2]` | 08, 09 | ✅ |
-| `obj.name` (accès à une propriété) | `obj.Sourced_name` ; sur un `any` (tuple hétérogène, `EitherAny.Value`), l'adaptateur ajoute l'assertion | — | ⬜ |
-| `type X = …`, `interface X { … }` | **rien** : Go n'en a pas besoin, le checker lit déjà les types | — | ✅ au niveau du fichier (D-18.6) ; ⬜ **dans une fonction** (`block.ts`) |
+| `obj.name` (accès à une propriété) | `obj.Sourced_name` ; sur un `any` (tuple hétérogène, `EitherAny.Value`), l'adaptateur ajoute l'assertion | — | ✅ (D-19) |
+| `type X = …`, `interface X { … }` | **rien** : Go n'en a pas besoin, le checker lit déjà les types | — | ✅ au niveau du fichier (D-18.6) et dans une fonction (D-19) |
 | `return` sans valeur | `return` | — | ✅ |
+
+**Au-delà des exercices (D-19)** : objets littéraux, accès aux éléments, affectations, `for…of`, `while`, `for`, `break` / `continue`, `switch`, template strings, `typeof`, `??`, `Math.*`, déstructuration d'objet et `group` sur un objet sont traduits et vérifiés contre Node (`tests/language-extended/`, 86 cas).
 
 **Ensuite, deux vérifications obligatoires** :
 1. **Ordre d'évaluation avec des variables** (R-01, remarque n° 2, voir l'étape 5) : à corriger dès que les affectations existent.
-2. **Lecture après narrowing** (D-18.2) : ajouter un test avec `if (DEither.isLeft(x)) { return x; }` puis `x` utilisé comme valeur. C'est écrit mais jamais exécuté.
+2. ~~**Lecture après narrowing** (D-18.2)~~ : ✅ vérifiée à l'exécution (`tests/language-extended/`, D-19).
 
 **Où** : `src/transpiler/transformers/statement/`, `expression/` et `declaration/`, puis ajouter chaque transformer dans le `index.ts` de sa catégorie.
 
