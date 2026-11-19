@@ -264,12 +264,8 @@ function getPropertyFunction() {
 			go.declare("found", go.call("jsLookup", [go.call(reflect("ValueOf"), [go.id("value")]), go.id("name")])),
 			go.when(method("found", "IsValid"), [go.return(method("found", "Interface"))]),
 			go.declare("reflected", go.call(reflect("ValueOf"), [go.id("value")])),
-			go.when(go.binary(isLength, "&&", kindIs("reflected", "Slice")), [
-				go.return(go.convert(float64, method("reflected", "Len"))),
-			]),
-			go.when(go.binary(isLength, "&&", kindIs("reflected", "String")), [
-				go.return(go.call("JSStringLength", [method("reflected", "String")])),
-			]),
+			go.when(go.binary(isLength, "&&", kindIs("reflected", "Slice")), [go.return(go.convert(float64, method("reflected", "Len")))]),
+			go.when(go.binary(isLength, "&&", kindIs("reflected", "String")), [go.return(go.call("JSStringLength", [method("reflected", "String")]))]),
 			go.return(go.empty("JSUndefined")),
 		],
 	});

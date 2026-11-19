@@ -195,10 +195,12 @@ export const elementAccessTransformer: Transformer<GoAST.Expression> = createTra
 		if (rendered === "any" && (keyType.flags & TypeFlags.StringLike) !== 0) {
 			const read = await fitAny(getProperty(context, target.result, key.result), node, context);
 
-			return DEither.isLeft(read) ? read : context.success({
-				before,
-				result: DEither.unwrapRight(read),
-			});
+			return DEither.isLeft(read)
+				? read
+				: context.success({
+					before,
+					result: DEither.unwrapRight(read),
+				});
 		}
 
 		if (!await isArrayLike(targetType, context) || !rendered.startsWith("[]")) {

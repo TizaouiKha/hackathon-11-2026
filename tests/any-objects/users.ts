@@ -1,4 +1,4 @@
-/* eslint-disable typescript/no-unsafe-return, typescript/no-unsafe-member-access, typescript/no-unsafe-assignment */
+/* eslint-disable typescript/no-unsafe-member-access */
 // Ce test manipule exprès des `any` : c'est le scénario étudié (D-20).
 import * as DCommon from "@duplojs/lang/common";
 
