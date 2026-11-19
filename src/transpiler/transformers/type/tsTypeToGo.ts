@@ -370,6 +370,21 @@ async function translateArray(
 	if (!element) {
 		return context.error(node, "array-without-element-type");
 	}
+	if (element.isUnionType()) {
+		let hasCallable = false;
+		let hasEither = false;
+
+		for (const member of (await element.getTypes()) ?? []) {
+			hasCallable ||= (await member.getCallSignatures()).length > 0;
+			const memberIssues = await readEitherIssues(member, node, context);
+			hasEither ||= DEither.isRight(memberIssues);
+		}
+		// `MayBeGetter<Either>[]` mélange deux représentations Go incompatibles.
+		// La slice garde donc `any`; asyncGroup rétablit le type de chaque position.
+		if (hasCallable && hasEither) {
+			return goType(GoAST.createSliceType({ elementType: GoAST.builtinTypeReferences.any }));
+		}
+	}
 
 	const elementType = await translate(element, node, context, inProgress);
 

@@ -15,6 +15,7 @@ import { parenthesizedExpressionTransformer } from "./parenthesized";
 import { conditionalExpressionTransformer } from "./conditional";
 import { arrowFunctionTransformer } from "./function";
 import { arrayLiteralExpressionTransformer } from "./arrayLiteral";
+import { awaitExpressionTransformer } from "./await";
 import { elementAccessTransformer, propertyAccessTransformer } from "./access";
 import { objectLiteralTransformer } from "./objectLiteral";
 import { nullishCoalescingTransformer, templateLiteralTransformer, typeOfTransformer } from "./javascriptOperators";
@@ -36,6 +37,7 @@ export const rawExpressionTransformers = DCommon.memo(
 		conditionalExpressionTransformer,
 		arrowFunctionTransformer,
 		arrayLiteralExpressionTransformer,
+		awaitExpressionTransformer,
 		objectLiteralTransformer,
 		templateLiteralTransformer,
 		typeOfTransformer,

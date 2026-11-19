@@ -6,6 +6,7 @@ import type { GoAST } from "@go";
 import { TsAST } from "@typescript";
 import { pipeExpressionHandler } from "./pipe";
 import { printExpressionHandler } from "./print";
+import { asyncPipeExpressionHandler } from "./asyncPipe";
 
 /**
  * Routeur du domaine `@duplojs/lang/common` (fonctions `DCommon.*`).
@@ -39,6 +40,10 @@ export const duploJSCommonExpressionTransformer: Transformer<GoAST.Expression> =
 			DPattern.match(
 				DCommon.equal("pipe"),
 				() => pipeExpressionHandler(node, context),
+			),
+			DPattern.match(
+				DCommon.equal("asyncPipe"),
+				() => asyncPipeExpressionHandler(node, context),
 			),
 			DPattern.match(
 				DCommon.equal("print"),
