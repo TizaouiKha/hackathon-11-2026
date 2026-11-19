@@ -10,6 +10,7 @@ import { go } from "../shared/goBuilder";
 import { jsStringDependency, jsStringIdentifiers } from "../duplojs/string/core/sharedDependency";
 import { undefinedShardDependency } from "../../sharedDependency/defaults";
 import { javascriptValue } from "./javascriptValues";
+import { getProperty } from "./javascriptObjects";
 import { expressionTransformers } from ".";
 
 /**
@@ -115,6 +116,13 @@ export const propertyAccessTransformer: Transformer<GoAST.Expression> = createTr
 
 		const rendered = render(DEither.unwrapRight(targetGoType));
 
+		// `raw.name` sur un `any` : lecture par nom, à l'exécution, comme JS (D-20).
+		if (rendered === "any") {
+			const read = await fitAny(getProperty(context, target.result, go.string(name)), node, context);
+
+			return DEither.isLeft(read) ? read : success(DEither.unwrapRight(read));
+		}
+
 		if (rendered.startsWith("struct")) {
 			return success(GoAST.createSelectorExpression({
 				target: target.result,
@@ -172,6 +180,20 @@ export const elementAccessTransformer: Transformer<GoAST.Expression> = createTra
 
 		if (rendered.startsWith("map[")) {
 			const read = await fitAny(go.call(javascriptValue(context, "mapGet"), [target.result, key.result]), node, context);
+
+			return DEither.isLeft(read)
+				? read
+				: context.success({
+					before,
+					result: DEither.unwrapRight(read),
+				});
+		}
+
+		const keyType = await typeChecker.getTypeAtLocation(node.argumentExpression);
+
+		// `raw["name"]` / `raw[cle]` sur un `any` : lecture par nom (D-20).
+		if (rendered === "any" && (keyType.flags & TypeFlags.StringLike) !== 0) {
+			const read = await fitAny(getProperty(context, target.result, key.result), node, context);
 
 			return DEither.isLeft(read)
 				? read

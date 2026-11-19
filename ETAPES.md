@@ -24,8 +24,9 @@ Chaque étape indique : **le but**, **ce qu'il faut avoir lu**, **ce qu'il faut 
 | 7 | [Domaine Either (handlers)](#étape-7--domaine-either) | 3, 5 | Claude, puis Mrlbe1 | ✅ (`group` : PR #15) |
 | 8 | [Domaines Common / Array / String](#étape-8--domaines-common--array--string) | 4, 5 | Claude | ✅ 8a (`pipe`, formes curryfiées), 8b (`DString.*`, `DArray.map`, `DArray.coalescing`, D-18.4 et D-18.5) ; `print` fait à l'étape 4 |
 | 9 | [Valider les projets 01 → 09](#étape-9--valider-les-projets-01--09) | 6, 7, 8 | tout le monde | ✅ les 10 projets (00 à 09) passent |
-| 10 | [Projet 10 (asynchrone)](#étape-10--projet-10-asynchrone) | 9 | | ⬜ |
+| 10 | [Projet 10 (asynchrone)](#étape-10--projet-10-asynchrone) | 9 | *(à remplir)* | 🟨 en cours |
 | 11 | [Performance et finitions](#étape-11--performance-et-finitions) | 9 | | ⬜ |
+| 12 | [Couvrir le TypeScript courant](#étape-12--couvrir-le-typescript-courant-au-delà-des-exercices) | 6 | Claude | 🟨 D-19 et D-20 faits ; **D-21 (objet temporaire) à faire** |
 
 ```
 3 (Either) ──┐
@@ -124,7 +125,7 @@ tests/<nom>/
 - `pnpm test:runtime` lance tous les tests, et `./.commands/test-runtime.sh either` un seul.
 - Le script transpile le dossier, copie `check/` dans `dist/`, puis lance `go vet` et `go run ./check`.
 - `check/main.go` importe le package transpilé (par exemple `shapes "duplojs.local/transpiled/shapes.ts"`) et appelle les fonctions sous leur nom Go (`shapes.Sourced_maFonction(...)`). Il doit **sortir avec un code d'erreur** si un contrôle échoue (`os.Exit(1)`).
-- Exemple complet : `tests/either/` (étape 3). Liste actuelle (17 tests) : `arrays`, `composite-types`, `dstring-to`, `either`, `either-helpers`, `js-number-to-string`, `js-operators`, `language-basics`, `language-extended`, `maps-advanced`, `narrowing`, `pipe`, `preparation`, `print`, `strings`, `ts-types`, `type-declarations`.
+- Exemple complet : `tests/either/` (étape 3). Liste actuelle (18 tests) : `any-objects`, `arrays`, `composite-types`, `dstring-to`, `either`, `either-helpers`, `js-number-to-string`, `js-operators`, `language-basics`, `language-extended`, `maps-advanced`, `narrowing`, `pipe`, `preparation`, `print`, `strings`, `ts-types`, `type-declarations`.
 - **Valeurs attendues** : calcule-les en exécutant **le même TypeScript avec `tsx`**, ne les écris pas de tête. Pour beaucoup de cas, génère `check/cases.go` depuis Node (exemple : `tests/strings/generate.ts`, 6 438 cas). Pour un affichage, compare `shard.Inspect(x)` à `util.inspect(x)` de Node (exemple : `tests/maps-advanced/`).
 - **Piège** : dans `check/main.go`, une constante Go rangée dans un `any` garde son type par défaut (`Value: 2` est un `int`). Le Go transpilé lit un `float64` : écris `float64(2)`.
 - **Variante « générateur »** : si le dossier contient un `check.ts` (et pas de `check/main.go`), le script le lance seul avec `tsx`. Il génère et exécute lui-même son Go, ce qui permet de tester une **shared dependency** sans TypeScript à transpiler. Exemple : `tests/js-number-to-string/` imprime le helper Go tel que le transpileur le génère, puis le compare à `String(x)` de Node sur 2 034 nombres.
@@ -484,4 +485,40 @@ Go typé et applique un assignateur propre à chaque champ.
 4. **Dérouler à la compilation les helpers qui coûtent** (D-09.3) : seulement ceux que `-gcflags=-m` ou le benchmark désignent (probablement `IsRight`, et les closures de `WhenIsRight` si elles sont allouées sur le tas). Mesurer avant et après.
 5. Rendre les noms de package lisibles (bug B-02) : utiliser le chemin relatif, pas le chemin absolu.
 6. Relire le Go généré des projets : supprimer les temporaires inutiles et les conversions redondantes.
-7. Résumer les chiffres et les choix dans `DECISIONS.md`, pour la présentation.
+7. **Mettre en cache la traduction des types** (`tsTypeToGo` retraduit le même type à chaque usage) ou utiliser des **types nommés** pour les objets : moins de travail à la transpilation, et un Go plus lisible.
+8. Résumer les chiffres et les choix dans `DECISIONS.md`, pour la présentation.
+
+---
+
+## Étape 12 — Couvrir le TypeScript courant, au-delà des exercices
+
+**But** : les projets 00 à 09 passent, mais ils n'utilisent qu'une petite partie du langage. Cette étape traduit le TypeScript qu'on écrit au quotidien, sans jamais diverger de JavaScript sans le dire.
+
+**Méthode** : écrire de petits programmes dans le style DuploJS, les transpiler, et traiter ce qui échoue, par ordre de fréquence. Chaque correction a un test d'exécution **comparé à Node**.
+
+| Lot | Contenu | État |
+|---|---|---|
+| D-19 | propriétés, éléments, objets littéraux, affectations, boucles, `switch`, template strings, `typeof`, `??`, `Math.*`, déstructuration, `group` sur un objet | ✅ (PR #17) |
+| D-20 | objet `any` utilisé comme objet typé (`JSAs`), propriété lue sur un `any` (`JSGetProperty`), `true` / `false`, déclaration typée des variables locales | ✅ (branche `objets-any`) |
+| **D-21** | **objet plus grand passé à un type plus petit** (`test(user)` avec `test(arg: { name: string })`) : générer l'**objet temporaire** à la compilation | ⬜ **à faire, prochaine priorité** |
+
+**D-21 en détail** (voir `DECISIONS.md` et `docs/objets-sous-types-et-any.md`) :
+1. dans l'adaptateur (`expression/adapt.ts`), quand l'objet produit et l'objet attendu sont deux structs différents, construire le struct attendu en copiant chaque champ par nom (`user.Sourced_name`) ;
+2. évaluer la source une seule fois (variable temporaire si ce n'est pas un identifiant) ;
+3. traiter récursivement les objets imbriqués, et les tableaux d'objets (nouvelle slice) ;
+4. champ facultatif côté cible : la valeur, ou `undefined` si la source ne l'a pas ;
+5. test d'exécution contre Node : le cas du prof, un objet imbriqué, un tableau d'objets.
+
+**Reste à traiter ensuite** (aujourd'hui refusé avec une erreur claire) :
+
+| Construction | Piste |
+|---|---|
+| ordre d'évaluation avec des variables, `f(x, change())` (R-01, n° 2) | copier `x` dans une variable avant d'évaluer `change()`. **Possible maintenant** que les affectations existent : à corriger en priorité après D-21 |
+| `user?.name`, `values?.[0]` | `JSIsNullish` sur la cible, puis `undefined` ou la lecture |
+| méthodes des tableaux et des chaînes (`values.map`, `text.trim`) | les traduire vers les helpers `DArray` / `DString` existants |
+| `DString.split`, `replace`, `test` | le handler générique `duplojs/string/core/stringFunction.ts` ; regex : la syntaxe Go diffère |
+| `group([() => a, () => b])` (tableau de fonctions) | même principe que la forme objet de D-19 |
+| `%=`, `??=`, `||=`, `do … while`, étiquettes | réécritures simples |
+| décomposition `{ ...objet }`, clé calculée, déstructuration au niveau du module | à évaluer selon le besoin |
+| `Map` / `Set` de JS, classes | à évaluer : aucun projet ne les utilise |
+| modifier un champ d'objet (`obj.x = e`) | **refusé exprès** : un struct Go est copié, un objet JS partagé. Il faudrait des pointeurs : à décider en équipe |

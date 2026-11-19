@@ -1,3 +1,4 @@
+import * as DArray from "@duplojs/lang/array";
 import * as DCommon from "@duplojs/lang/common";
 import * as DEither from "@duplojs/lang/either";
 import { GoAST, GoPrinter } from "@go";
@@ -37,9 +38,19 @@ export const objectLiteralTransformer: Transformer<GoAST.Expression> = createTra
 		const useContextual = contextualGo !== undefined
 			&& DEither.isRight(contextualGo)
 			&& /^(struct|map\[)/.test(GoPrinter.renderNode(DEither.unwrapRight(contextualGo)));
+		// Dans un tableau (`[{ name, age }, { age, name }]`), TS ne garde qu'un type
+		// d'élément, alors que Go distingue l'ordre des champs : chaque objet prend le
+		// type d'élément du tableau, et ses champs sont remplis par nom (D-20).
+		const arrayElementType = !useContextual && TsAST.isArrayLiteralExpression(node.parent)
+			? await typeChecker.getTypeAtLocation(node.parent).then(async(arrayType) => (
+				arrayType.isTypeReference() && await typeChecker.isArrayType(arrayType)
+					? DArray.first(await typeChecker.getTypeArguments(arrayType))
+					: undefined
+			))
+			: undefined;
 		const goType = useContextual
 			? contextualGo
-			: await tsTypeToGo(await typeChecker.getTypeAtLocation(node), node, context);
+			: await tsTypeToGo(arrayElementType ?? await typeChecker.getTypeAtLocation(node), node, context);
 
 		if (DEither.isLeft(goType)) {
 			return goType;

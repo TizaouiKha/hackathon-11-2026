@@ -527,6 +527,58 @@ Non couvert : les `Map` JavaScript (`new Map()`) donnent une erreur claire (`rec
 
 **Restent refusés, avec une erreur claire** : `?.`, `do … while`, `for … in`, étiquettes, `%=` et `??=`, décomposition `...`, clé calculée, déstructuration au niveau du module, `text[i]` (utiliser `DString.at`), méthodes des tableaux et des chaînes (`values.map` : utiliser `DArray` / `DString`), `Map` / `Set` de JS, classes.
 
+### D-20 · Objets `any` : un objet sans interface utilisé comme objet typé — ✅ (19/11/2026, branche `objets-any`)
+
+**Le scénario** : une fonction renvoie un `User` bien construit ; une autre renvoie un `any` construit sans l'interface (`const raw: any = { … }; return raw;`) ; on lit aussi `raw.name` directement. Un test sur `main` a montré que **rien ne passait** : le Go ne compilait pas, et `raw.name` était refusé.
+
+**Quatre corrections.**
+1. **Déclaration typée** (`statement/variable.ts`). `const raw: any = {…}` donnait `raw := {…}` : Go donnait à `raw` le type de l'objet, l'adaptateur croyait ensuite que c'était un `any`, et le Go ne compilait plus. Quand le type écrit en TS diffère du type de la valeur, la variable est maintenant déclarée `var raw any = {…}`.
+2. **`JSAs[T](valeur)`** (`expression/javascriptObjects.ts`). Un `any` utilisé là où un objet ou un tableau typé est attendu est **recopié champ par champ, par nom** (le tag `json:"name"`), quel que soit l'ordre, y compris pour les tableaux d'objets. Si la valeur a déjà exactement le bon type, elle est renvoyée telle quelle, sans copie. L'adaptateur (D-18.2) l'insère à la place d'une assertion `x.(T)`, qui ne marchait que pour un struct identique.
+3. **`JSGetProperty(valeur, "nom")`** : `raw.name`, `raw["name"]` ou `raw[cle]` sur un `any` lisent le champ par nom à l'exécution, comme JS. Une propriété absente donne `undefined`, et `raw.length` marche sur un tableau ou une chaîne (en UTF-16).
+4. **Littéraux `true` / `false`** (`expression/booleanLiteral.ts`) : ils n'étaient pas traduits, un trou de l'étape 6 trouvé par ce test.
+
+**Deux ajustements liés.**
+- Un objet littéral **dans un tableau** prend le type d'élément du tableau. Sinon, `[{ name, age }, { age, name }]` donnait deux structs différents, que Go refuse dans une même slice.
+- `print` **n'affiche plus un champ qui vaut `undefined`** : un champ facultatif absent (`nickname?: string`) n'apparaît pas, comme dans Node.
+
+**Ce qui ne peut pas être identique à JS** (un struct a une forme fixe ; c'est documenté et testé) :
+- un **champ en trop** dans l'objet `any` est perdu (`admin: true` disparaît) ;
+- l'**ordre d'affichage** suit le type TS, et non l'ordre d'écriture de l'objet ;
+- un **champ du mauvais type** (`age: "36"` pour un `number`) ou un champ obligatoire **absent** arrête le programme avec un message clair (`JSAs : valeur.age est un string, float64 attendu`) au lieu de produire un résultat faux. TypeScript fait confiance au `any`, mais Go doit savoir ce qu'il range.
+
+**Vérifié** : `tests/any-objects/` (11 cas, les écarts ci-dessus vérifiés tels quels), plus les autres tests d'exécution, les projets 00 à 09, `tsc`, les types et le lint.
+
+### D-21 · Objet plus grand passé à un type plus petit : l'objet temporaire — 🟨 décidé, à faire
+
+**Le cas** (posé par le prof) : `function test(arg: { name: string })` appelée avec un `User` complet (`{ id, name, email, isActive }`).
+
+- **TypeScript accepte** : son typage est *structurel*. `User` a au moins un `name`, donc il convient.
+- **Go refuse** : `struct{ id; name; email; isActive }` et `struct{ name }` sont deux types différents. Le `go build` échoue.
+- **Aujourd'hui** : l'adaptateur (D-18.2) ne convertit qu'un `any` vers un objet typé (`JSAs`, D-20). Entre deux structs connus, il ne fait rien.
+
+**Choix : l'objet temporaire, construit à la compilation.** Les deux formes sont connues de TypeScript avant l'exécution. Le transpileur écrit donc directement un struct littéral qui ne contient que les champs attendus :
+```go
+Sourced_test(struct{ Sourced_name string }{
+	Sourced_name: Sourced_user.Sourced_name,
+})
+```
+
+**Pourquoi ce choix plutôt qu'un helper à l'exécution comme `JSAs`** :
+- aucune réflexion ni recherche par nom : c'est une copie de cases, en général sur la pile ;
+- impossible d'échouer à l'exécution, puisque TS a déjà vérifié que les champs existent ;
+- on ne copie que ce que la fonction peut voir (TS lui interdit le reste).
+
+**À implémenter** (dans l'adaptateur, `expression/adapt.ts`) :
+1. produit et cible sont deux **structs** dont le rendu Go diffère : construire le struct de la cible, champ par champ, en lisant chaque champ par nom sur la source (`source.Sourced_x`). La source est placée dans une variable temporaire si ce n'est pas un simple identifiant, pour ne l'évaluer qu'une fois ;
+2. un champ lui-même objet : même règle, **récursivement** (`{ leader: { name } }`) ;
+3. un champ tableau d'objets (`User[]` vers `{ name: string }[]`) : nouvelle slice, élément par élément. C'est le seul cas qui alloue ;
+4. un champ facultatif (`any` côté cible) : la valeur de la source, ou `undefined` si elle n'a pas ce champ ;
+5. test d'exécution comparé à Node : le cas du prof, un objet imbriqué, un tableau, et un objet passé à un `Record`.
+
+**Lien avec D-20** : c'est la même idée que `JSAs`, mais calculée à la compilation. `JSAs` reste nécessaire quand la forme de départ est inconnue (`any`).
+
+Support de présentation : `docs/objets-sous-types-et-any.md`.
+
 ### D-11 · Asynchrone (projet 10) — 🟡
 - Il n'y a aucune vraie entrée/sortie, donc une **exécution synchrone** (`Promise<T>` traduit en `T`) préserve l'ordre et le résultat.
 - Goroutines et channels seulement en bonus, si on a le temps.
