@@ -348,7 +348,7 @@ Les types calculés (`Extract`, `ReturnType`…) n'ont pas besoin de règle : le
 - ~~la lecture typée lors du narrowing~~ (D-18.2) ;
 - ~~`unwrapRight`, `isLeft`~~ (D-18.2) ;
 - ~~les tableaux, objets, tuples, fonctions et `Promise`~~ (D-18.3) ;
-- `JSStringLength`.
+- ~~`JSStringLength`~~ (D-18.4).
 
 #### D-18.2 · Phase 2 faite — ✅ (18/11/2026, branche `d18-phase2-narrowing`)
 
@@ -405,6 +405,34 @@ Passé comme fonction (`pipe(x, DEither.unwrapRight)`), il devient une fonction 
 **Effet sur la phase 2** : les types de fonction sont maintenant traduisibles, donc l'adaptateur voit les fonctions comme des types concrets ; il ne les modifie pas (produit et cible de même nature).
 
 **Vérifié** : `tests/composite-types/` (17 contrôles : signatures lues par réflexion, allers-retours d'objet, de tuple et de map, callback appelé, `Success<number[]>`), les 8 autres tests d'exécution, `check.sh 00`, les types, le lint, et l'erreur sur un type récursif.
+
+#### D-18.4 · Phase 4, chaînes — ✅ (19/11/2026, branche `d18-phase4-strings`)
+
+**Problème.** Une `string` Go contient de l'UTF-8 ; JavaScript compte en **unités UTF-16**. `"é".length` vaut 1 en JS et `len("é")` vaut 2 en Go ; `"😀".length` vaut 2 en JS et 4 octets en Go. Toutes les fonctions à positions donnaient donc des résultats faux sur du texte non ASCII.
+
+**Choix.** On garde la `string` Go (UTF-8), sans conversion en `[]uint16` : les fonctions convertissent les positions UTF-16 en octets seulement quand c'est nécessaire.
+- **Chemin rapide** : si `len(value)` égale la longueur UTF-16, le texte est ASCII et `value[from:to]` est pris tel quel, sans copie.
+- `includes`, `startsWith` et `endsWith` ne manipulent pas de positions : `strings.Contains` / `HasPrefix` / `HasSuffix` donnent directement le bon résultat.
+- Une position qui tombe **au milieu d'un emoji** (paire UTF-16) produit `U+FFFD`, exactement ce que Node affiche pour une moitié de paire.
+
+**Fonctions traduites** (`duplojs/string/core/`), formes avec données et curryfiées (`DCommon.pipe(text, DString.slice(0, 2))`) :
+`length`, `slice`, `substring`, `charAt`, `at`, `indexOf`, `includes`, `startsWith`, `endsWith`, `toUpperCase` et `toLowerCase`. `DString.length` passé comme fonction donne directement le helper `func(string) float64`.
+
+Elles suivent les règles d'ECMAScript : `ToIntegerOrInfinity` (`NaN` donne 0, troncature), positions négatives depuis la fin pour `slice` et `at`, inversion des bornes pour `substring`, `undefined` pour `at` et `indexOf` hors de la chaîne (`JSUndefined`).
+
+**Casse.** Go et Node 24 utilisent la même version d'Unicode (17). La comparaison sur **tous** les points de code ne montre que deux écarts, corrigés :
+- 102 caractères dont la majuscule en donne plusieurs (`ß` → `SS`, ligatures, grec à iota souscrit) et `İ` → `i̇` en minuscule. Table générée depuis Node (`core/caseMapping.ts`), appliquée par un `strings.Replacer` avant `strings.ToUpper` / `ToLower` ;
+- la règle **Final_Sigma** : `Σ` en fin de mot devient `ς` (`ΟΔΟΣ` → `οδος`). Le chemin lent ne s'exécute que si le texte contient un `Σ`.
+
+**Vérifié.**
+- `tests/strings/` : **6 040 cas** générés depuis Node par `tests/strings/generate.ts` (9 textes ASCII, accentués, emojis, `ß`, `İ`, ligature, accent combinant, grec × 13 positions, dont `NaN`, `±Infinity`, décimales et négatives × 6 recherches). 0 échec.
+- Casse comparée sur **4 448 244 cas** (chaque point de code en majuscule et en minuscule, et le sigma placé avant ou après chacun) : 0 écart. Cette vérification lourde n'est pas dans la suite de tests.
+- Les 10 autres tests d'exécution, `check.sh 00`, les types et le lint.
+
+**Limites.**
+- Une moitié de paire **recollée** (`slice` puis concaténation) ne redonne pas l'emoji : Go a déjà remplacé chaque moitié par `U+FFFD`. Une chaîne JS mal formée n'a pas de représentation UTF-8.
+- Pas encore traduits : `split`, `replace`, `test` (les regex Go n'ont pas la même syntaxe), `padStart`… Ils seront ajoutés quand un projet en aura besoin, avec le même handler générique (`core/stringFunction.ts`).
+- Les littéraux de chaîne (`"abc"`) restent à l'étape 6 : les tests passent les chaînes depuis Go.
 
 ### D-11 · Asynchrone (projet 10) — 🟡
 - Il n'y a aucune vraie entrée/sortie, donc une **exécution synchrone** (`Promise<T>` traduit en `T`) préserve l'ordre et le résultat.
