@@ -6,6 +6,7 @@ import * as DEither from "@duplojs/lang/either";
 import * as DArray from "@duplojs/lang/array";
 import { TypeFlags, type Type } from "typescript/async";
 import { type BuildContext } from "../../context/build";
+import { sequenceOperands } from "../shared/sequence";
 import {
 	bitwiseHelperIdentifiers,
 	javascriptBitwiseDependency,
@@ -140,6 +141,30 @@ function numericLogical(
 	]);
 }
 
+interface PreparedSide {
+	readonly before: readonly GoAST.Statement[];
+	readonly operand: GoAST.Expression;
+}
+
+/** Gauche puis droite, dans l'ordre de JavaScript (R-01, n° 2) : `x + change()`. */
+function sequenceBinary(
+	node: TsAST.BinaryExpression,
+	left: PreparedSide,
+	right: PreparedSide,
+	context: BuildContext,
+) {
+	return sequenceOperands([
+		{
+			node: node.left,
+			...left,
+		},
+		{
+			node: node.right,
+			...right,
+		},
+	], context);
+}
+
 async function transformBitwise(
 	node: TsAST.BinaryExpression,
 	operation: BitwiseOperation,
@@ -155,14 +180,16 @@ async function transformBitwise(
 		return right;
 	}
 
+	const { before, operands } = await sequenceBinary(node, left, right, context);
+
 	return context.success({
-		before: DArray.concat(left.before, right.before),
+		before,
 		result: GoAST.createCallExpression({
 			callee: GoAST.createSelectorExpression({
 				target: context.registerSharedDependency(javascriptBitwiseDependency.value),
 				identifier: bitwiseHelperIdentifiers[operation],
 			}),
-			arguments: [left.operand, right.operand],
+			arguments: operands,
 		}),
 	});
 }
@@ -180,15 +207,16 @@ async function transformModulo(node: TsAST.BinaryExpression, context: BuildConte
 	}
 
 	context.file.imports.add(mathImportDeclaration.value);
+	const { before, operands } = await sequenceBinary(node, left, right, context);
 
 	return context.success({
-		before: DArray.concat(left.before, right.before),
+		before,
 		result: GoAST.createCallExpression({
 			callee: GoAST.createSelectorExpression({
 				target: GoAST.createIdentifier("math"),
 				identifier: GoAST.createIdentifier("Mod"),
 			}),
-			arguments: [left.operand, right.operand],
+			arguments: operands,
 		}),
 	});
 }
@@ -271,12 +299,14 @@ export const binaryExpressionTransformer: Transformer<BinaryResultNode> = create
 			});
 		}
 
+		const { before, operands: [leftOperand, rightOperand] } = await sequenceBinary(node, left, right, context);
+
 		return context.success({
-			before: DArray.concat(left.before, right.before),
+			before,
 			result: GoAST.createBinaryExpression({
 				operator,
-				left: left.operand,
-				right: right.operand,
+				left: leftOperand!,
+				right: rightOperand!,
 			}),
 		});
 	},

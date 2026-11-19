@@ -7,6 +7,7 @@ import { createTransformer, type Transformer } from "@transformer";
 import { TsAST } from "@typescript";
 import { tsTypeOfNodeToGo } from "../type";
 import { expressionTransformers } from ".";
+import { sequenceOperands, type SequencedOperand } from "../shared/sequence";
 
 export const arrayLiteralExpressionTransformer: Transformer<GoAST.CompositeLiteral> = createTransformer(
 	async(node, context) => {
@@ -16,13 +17,7 @@ export const arrayLiteralExpressionTransformer: Transformer<GoAST.CompositeLiter
 
 		const elements = await DGenerator.asyncReduce(
 			node.elements,
-			DGenerator.reduceFrom<{
-				before: readonly GoAST.Statement[];
-				values: readonly GoAST.Expression[];
-			}>({
-				before: [],
-				values: [],
-			}),
+			DGenerator.reduceFrom<readonly SequencedOperand[]>([]),
 			async({ item, lastValue, next, exit }) => {
 				if (TsAST.isSpreadElement(item)) {
 					return exit(context.error(item, "array-spread-not-supported-yet"));
@@ -33,15 +28,16 @@ export const arrayLiteralExpressionTransformer: Transformer<GoAST.CompositeLiter
 					return exit(element);
 				}
 
-				return next({
-					before: DArray.concat(lastValue.before, element.before),
-					values: DArray.push(lastValue.values, element.operand),
-				});
+				return next(DArray.push(lastValue, {
+					node: item,
+					...element,
+				}));
 			},
 		);
 		if (DEither.isLeft(elements)) {
 			return elements;
 		}
+		const sequenced = await sequenceOperands(elements, context);
 
 		const literalType = await tsTypeOfNodeToGo(node, context);
 		if (DEither.isLeft(literalType)) {
@@ -53,23 +49,23 @@ export const arrayLiteralExpressionTransformer: Transformer<GoAST.CompositeLiter
 		if (DModeling.hasTagValue(typeReference, "[node][type]slice")) {
 			result = GoAST.createSliceLiteral({
 				typeReference,
-				elements: elements.values,
+				elements: sequenced.operands,
 			});
 		} else if (DModeling.hasTagValue(typeReference, "[node][type]array")) {
 			result = GoAST.createArrayLiteral({
 				typeReference,
-				elements: elements.values,
+				elements: sequenced.operands,
 			});
 		} else if (DModeling.hasTagValue(typeReference, "[node][type]struct")) {
 			result = GoAST.createStructLiteral({
 				typeReference,
-				elements: elements.values,
+				elements: sequenced.operands,
 			});
 		}
 
 		return result
 			? context.success({
-				before: elements.before,
+				before: sequenced.before,
 				result,
 			})
 			: context.error(node, "array-literal-type-is-not-slice-array-or-tuple-struct");

@@ -5,6 +5,7 @@ import { expressionTransformers } from "../expression";
 import * as DEither from "@duplojs/lang/either";
 import * as DArray from "@duplojs/lang/array";
 import * as DGenerator from "@duplojs/lang/generator";
+import { sequenceOperands, type SequencedOperand } from "./sequence";
 
 export const callExpressionTransformer: Transformer<GoAST.CallExpression> = createTransformer(
 	async(rawNode, context) => {
@@ -20,26 +21,25 @@ export const callExpressionTransformer: Transformer<GoAST.CallExpression> = crea
 			return callee;
 		}
 
-		// Chaque préparation est ajoutée avant de passer à l'argument suivant.
+		// L'appelé puis chaque argument, dans l'ordre de JavaScript (R-01, n° 2).
 		const preparedArguments = await DGenerator.asyncReduce(
 			node.arguments,
-			DGenerator.reduceFrom<{
-				before: readonly GoAST.Statement[];
-				operands: readonly GoAST.Expression[];
-			}>({
-				before: callee.before,
-				operands: [],
-			}),
+			DGenerator.reduceFrom<readonly SequencedOperand[]>([
+				{
+					node: node.expression,
+					...callee,
+				},
+			]),
 			async({ item, lastValue, next, exit }) => {
 				const argument = await context.transformPrepared(item, expressionTransformers.value);
 				if (DEither.isLeft(argument)) {
 					return exit(argument);
 				}
 
-				return next({
-					before: DArray.concat(lastValue.before, argument.before),
-					operands: DArray.push(lastValue.operands, argument.operand),
-				});
+				return next(DArray.push(lastValue, {
+					node: item,
+					...argument,
+				}));
 			},
 		);
 
@@ -47,11 +47,16 @@ export const callExpressionTransformer: Transformer<GoAST.CallExpression> = crea
 			return preparedArguments;
 		}
 
+		const { before, operands: [calleeOperand, ...argumentOperands] } = await sequenceOperands(
+			preparedArguments,
+			context,
+		);
+
 		return context.success({
-			before: preparedArguments.before,
+			before,
 			result: GoAST.createCallExpression({
-				callee: callee.operand,
-				arguments: preparedArguments.operands,
+				callee: calleeOperand!,
+				arguments: argumentOperands,
 			}),
 		});
 	},
