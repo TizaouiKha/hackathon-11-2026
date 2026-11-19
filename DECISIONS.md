@@ -666,13 +666,34 @@ Les remarques de relecture des PR, pour ne pas les perdre. Statuts : 🔴 à cor
 
 **Remarques :**
 1. 🔴 **PR ouverte sur le mauvais dépôt** : elle est sur [duplojs/hackathon-11-2026#5](https://github.com/duplojs/hackathon-11-2026/pull/5), le dépôt des organisateurs. Il faut la fermer et la rouvrir sur le fork (commande dans D-15). Sinon, elle ne peut pas être mergée dans notre `main`.
-2. 🟡 **Ordre d'évaluation avec les variables.** `transformPrepared` ne copie plus les identifiants dans une variable temporaire. Si un argument **suivant** modifie la variable, Go lira la nouvelle valeur alors que JavaScript lit l'ancienne :
+2. ✅ **(corrigé le 19/11/2026, voir « Correction de la remarque n° 2 » plus bas)** **Ordre d'évaluation avec les variables.** `transformPrepared` ne copie plus les identifiants dans une variable temporaire. Si un argument **suivant** modifie la variable, Go lira la nouvelle valeur alors que JavaScript lit l'ancienne :
    ```ts
    f(x, change())   // change() modifie x : TS passe l'ancien x, le Go généré le nouveau
    ```
    Ce n'est **pas possible aujourd'hui** : aucun transformer ne traduit encore d'affectation, et aucun exercice ne modifie de variable. Ça le deviendra avec les affectations de l'étape 6. **Correction proposée** : quand un opérand suivant a des instructions de préparation (`before` non vide), copier dans une variable les identifiants déjà préparés avant lui. C'est la règle du skill `typescript-to-go` : « conserver la valeur de chaque expression dans une déclaration locale avant de poursuivre l'évaluation suivante ».
 3. 🟡 **Cohérence du contrat.** `transformPrepared` renvoie un objet simple `{ before, operand }` en cas de succès, alors que le reste du transpileur renvoie des résultats `DEither` (`context.success(...)`, `DEither.isLeft`). Ça fonctionne, mais un `DEither.right("prepared-operand", { before, operand })` serait plus cohérent avec D-04. Ce n'est pas bloquant.
 4. ✅ **(corrigé, voir plus bas)** **À garder en tête pour l'étape 6** : `&&` et `||` sont traduits avec un résultat `bool`. En JavaScript, `a || b` renvoie **la valeur** de `a` ou de `b` (par exemple `0 || 5` vaut `5`). Les exercices n'utilisent `||` qu'entre des booléens (`one < 0 || two < 0`), donc c'est sans effet pour l'instant.
+
+#### Correction de la remarque n° 2 (19/11/2026, branche `r01-ordre-evaluation`)
+**Le bug, vérifié** : `f(x, change())` donnait en Go
+```go
+Generated_1 := Sourced_change()
+Sourced_f(Sourced_x, Generated_1) // x lu après change() : JS passe l'ancien x
+```
+Même problème pour `x + change()`, `[x, change()]` et `{ a: x, b: change() }`. Pour l'objet, il existait même sans instruction sortie : Go garantit l'ordre des **appels**, pas le moment où il lit une variable.
+
+**Correction** : `transformers/shared/sequence.ts`, `sequenceOperands`. Elle assemble les opérandes préparés (appelé et arguments d'un appel, gauche et droite d'un opérateur, éléments d'un tableau, valeurs d'un objet). Quand un opérande a des instructions préparatoires, chaque opérande précédent qui pourrait changer entre-temps est d'abord copié :
+```go
+Generated_2 := Sourced_x
+Generated_1 := Sourced_change()
+Sourced_f(Generated_2, Generated_1)
+```
+- les valeurs d'un objet littéral sont maintenant **préparées** comme des arguments d'appel ;
+- **pas de copie inutile** : les littéraux, les variables temporaires, les `const`, les fonctions, les imports, et les `let` ou paramètres **jamais réaffectés** dans leur fichier (`=`, `+=`, `++`, recherche par nom, donc prudente) sont lus directement ;
+- `{ x }` (forme courte) : le symbole lu est la variable, pas la propriété ;
+- les template strings n'en ont pas besoin : chaque morceau est un appel (`JSToString(x)`), et Go garantit l'ordre des appels.
+
+**Vérifié** : `tests/evaluation-order/` (9 cas comparés à Node : appel, opérateur, tableau, objet, forme courte, ordre des appels dans un objet, paramètre modifié par une fonction fléchée, constante, template string), plus toute la suite.
 
 #### Revue adversariale (18/11/2026)
 **But** : essayer de **casser** l'étape 5 avec des entrées TypeScript piégeuses. Chaque piège est transpilé dans son propre mini-projet, compilé, exécuté, puis comparé au **même code exécuté en JavaScript**. La base testée est l'étape 5 + `main` du 18/11.

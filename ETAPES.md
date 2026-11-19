@@ -26,7 +26,7 @@ Chaque étape indique : **le but**, **ce qu'il faut avoir lu**, **ce qu'il faut 
 | 9 | [Valider les projets 01 → 09](#étape-9--valider-les-projets-01--09) | 6, 7, 8 | tout le monde | ✅ les 10 projets (00 à 09) passent |
 | 10 | [Projet 10 (asynchrone)](#étape-10--projet-10-asynchrone) | 9 | *(à remplir)* | 🟨 en cours |
 | 11 | [Performance et finitions](#étape-11--performance-et-finitions) | 9 | | ⬜ |
-| 12 | [Couvrir le TypeScript courant](#étape-12--couvrir-le-typescript-courant-au-delà-des-exercices) | 6 | Claude | 🟨 D-19, D-20 et D-21 faits ; suite : R-01 n° 2, `?.`, méthodes |
+| 12 | [Couvrir le TypeScript courant](#étape-12--couvrir-le-typescript-courant-au-delà-des-exercices) | 6 | Claude | 🟨 D-19, D-20, D-21 et R-01 n° 2 faits ; suite : `Record`, `?.`, méthodes |
 
 ```
 3 (Either) ──┐
@@ -266,7 +266,7 @@ Les règles à reproduire :
 
 > ✅ **Fait et mergé** (PR #11). `context.transformPrepared(node, transformers)` conserve les instructions de préparation et laisse les identifiants et les littéraux en place quand c'est possible. Les 4 corrections de la review R-01 sont incluses (`%` → `math.Mod`, opérateurs bit à bit en int32 comme JS, `1e400` → `math.Inf(1)`, `&&`/`||` entre nombres). Tests : `tests/preparation/`, `tests/js-operators/`.
 >
-> ⚠️ **Reste ouvert pour l'étape 6** (R-01, remarque n° 2) : l'ordre d'évaluation avec des variables. Dans `f(x, change())`, si `change()` modifie `x`, il faut copier `x` **avant** d'évaluer `change()`. Ce n'est pas déclenchable aujourd'hui, mais ça le devient dès qu'il y a des affectations.
+> ✅ **R-01, remarque n° 2, corrigée** (branche `r01-ordre-evaluation`) : l'ordre d'évaluation avec des variables. Dans `f(x, change())`, `x` est copié **avant** l'appel de `change()` (`shared/sequence.ts`, voir DECISIONS R-01).
 
 **But** : ne plus recopier dans chaque transformer le motif « transformer l'enfant → vérifier l'erreur → créer une variable temporaire → concaténer `before` ». Il est déjà copié dans `binary.ts` et `call.ts`, et il va revenir partout.
 
@@ -323,7 +323,7 @@ Les règles à reproduire :
 **Au-delà des exercices (D-19)** : objets littéraux, accès aux éléments, affectations, `for…of`, `while`, `for`, `break` / `continue`, `switch`, template strings, `typeof`, `??`, `Math.*`, déstructuration d'objet et `group` sur un objet sont traduits et vérifiés contre Node (`tests/language-extended/`, 86 cas).
 
 **Ensuite, deux vérifications obligatoires** :
-1. **Ordre d'évaluation avec des variables** (R-01, remarque n° 2, voir l'étape 5) : à corriger dès que les affectations existent.
+1. ~~**Ordre d'évaluation avec des variables** (R-01, remarque n° 2)~~ : ✅ corrigé (`shared/sequence.ts`, `tests/evaluation-order/`).
 2. ~~**Lecture après narrowing** (D-18.2)~~ : ✅ vérifiée à l'exécution (`tests/language-extended/`, D-19).
 
 **Où** : `src/transpiler/transformers/statement/`, `expression/` et `declaration/`, puis ajouter chaque transformer dans le `index.ts` de sa catégorie.
@@ -500,7 +500,8 @@ Go typé et applique un assignateur propre à chaque champ.
 |---|---|---|
 | D-19 | propriétés, éléments, objets littéraux, affectations, boucles, `switch`, template strings, `typeof`, `??`, `Math.*`, déstructuration, `group` sur un objet | ✅ (PR #17) |
 | D-20 | objet `any` utilisé comme objet typé (`JSAs`), propriété lue sur un `any` (`JSGetProperty`), `true` / `false`, déclaration typée des variables locales | ✅ (branche `objets-any`) |
-| **D-21** | **objet plus grand passé à un type plus petit** (`test(user)` avec `test(arg: { name: string })`) : générer l'**objet temporaire** à la compilation | ✅ (branche `d21-objet-temporaire`) |
+| **D-21** | **objet plus grand passé à un type plus petit** (`test(user)` avec `test(arg: { name: string })`) : générer l'**objet temporaire** à la compilation | ✅ (PR #21) |
+| **R-01 n° 2** | **ordre d'évaluation** : `f(x, change())`, `x + change()`, `[x, change()]`, `{ a: x, b: change() }` lisent `x` avant `change()`, comme JS | ✅ (branche `r01-ordre-evaluation`) |
 
 **D-21 en détail** (voir `DECISIONS.md` et `docs/objets-sous-types-et-any.md`) : `expression/structuralConversion.ts` construit l'objet attendu champ par champ (récursif, tableaux d'objets, champ facultatif → `undefined`, source évaluée une fois). Test : `tests/structural-objects/`. Différence assumée : un objet renvoyé sous le type plus petit n'affiche que les champs de ce type.
 
@@ -508,8 +509,7 @@ Go typé et applique un assignateur propre à chaque champ.
 
 | Construction | Piste |
 |---|---|
-| ordre d'évaluation avec des variables, `f(x, change())` (R-01, n° 2) | copier `x` dans une variable avant d'évaluer `change()`. **Possible maintenant** que les affectations existent : **prochaine priorité** |
-| objet passé à un `Record<string, T>` (struct → `map`) | prolonger D-21 : une `map` remplie champ par champ |
+| objet passé à un `Record<string, T>` (struct → `map`) | prolonger D-21 : une `map` remplie champ par champ. **Prochaine priorité** |
 | `user?.name`, `values?.[0]` | `JSIsNullish` sur la cible, puis `undefined` ou la lecture |
 | méthodes des tableaux et des chaînes (`values.map`, `text.trim`) | les traduire vers les helpers `DArray` / `DString` existants |
 | `DString.split`, `replace`, `test` | le handler générique `duplojs/string/core/stringFunction.ts` ; regex : la syntaxe Go diffère |

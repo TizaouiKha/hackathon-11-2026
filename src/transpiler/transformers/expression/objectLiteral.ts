@@ -1,11 +1,11 @@
 import * as DArray from "@duplojs/lang/array";
-import * as DCommon from "@duplojs/lang/common";
 import * as DEither from "@duplojs/lang/either";
 import { GoAST, GoPrinter } from "@go";
 import { createTransformer, type Transformer } from "@transformer";
 import { TsAST } from "@typescript";
 import { tsTypeToGo } from "../type/tsTypeToGo";
 import { expressionTransformers } from ".";
+import { sequenceOperands, type SequencedOperand } from "../shared/sequence";
 
 /**
  * Objet littéral (D-19) : `{ name, age: 3 }` devient un littéral du struct
@@ -63,8 +63,8 @@ export const objectLiteralTransformer: Transformer<GoAST.Expression> = createTra
 			return context.error(node, "object-literal-type-not-supported-yet");
 		}
 
-		const before: GoAST.Statement[] = [];
-		const elements: GoAST.KeyedElement[] = [];
+		const keys: GoAST.Expression[] = [];
+		const values: SequencedOperand[] = [];
 
 		for (const property of node.properties) {
 			if (!TsAST.isPropertyAssignment(property) && !TsAST.isShorthandPropertyAssignment(property)) {
@@ -78,21 +78,27 @@ export const objectLiteralTransformer: Transformer<GoAST.Expression> = createTra
 			}
 
 			const valueNode = TsAST.isPropertyAssignment(property) ? property.initializer : property.name;
-			const value = await DCommon.asyncPipe(
-				context.transform(valueNode, expressionTransformers.value),
-				DEither.unwrapRight,
-			);
+			// Préparée comme un argument d'appel : Go ne garantit pas quand une variable
+			// est lue par rapport à un appel voisin (`{ a: x, b: change() }`).
+			const value = await context.transformPrepared(valueNode, expressionTransformers.value);
 
 			if (DEither.isLeft(value)) {
 				return value;
 			}
 
-			before.push(...value.before);
-			elements.push(GoAST.createKeyedElement({
-				key: isMap ? GoAST.createStringLiteral({ value: name }) : context.createSourceIdentifier(name),
-				value: value.result,
-			}));
+			keys.push(isMap ? GoAST.createStringLiteral({ value: name }) : context.createSourceIdentifier(name));
+			values.push({
+				node: valueNode,
+				...value,
+			});
 		}
+
+		// Les valeurs dans l'ordre de JavaScript (R-01, n° 2).
+		const { before, operands } = await sequenceOperands(values, context);
+		const elements = operands.map((value, index) => GoAST.createKeyedElement({
+			key: keys[index]!,
+			value,
+		}));
 
 		return context.success({
 			before,
