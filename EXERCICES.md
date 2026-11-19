@@ -1,6 +1,9 @@
 # Suivi des exercices — Hackathon DuploJS TS → Go
 
-Pour chaque projet : ce qu'il demande, notre réponse (la stratégie de traduction), le Go visé et l'état.
+Pour chaque projet : ce qu'il demande, notre réponse (la stratégie de traduction), le Go obtenu et l'état.
+
+**Bilan (19/11, étape 9)** : les projets **00 à 09 passent** (`check.sh`, sortie identique à TypeScript). Il reste le projet 10 (asynchrone, étape 10).
+
 Les décisions transverses sont dans [DECISIONS.md](DECISIONS.md) (références `D-xx`).
 
 États : ⬜ pas commencé · 🟨 en cours · ✅ compile et donne la bonne sortie · ❌ bloqué
@@ -9,14 +12,14 @@ Les décisions transverses sont dans [DECISIONS.md](DECISIONS.md) (références 
 |---|---|---|
 | [00](#projet-00) | Addition, appel de `DEither.success`, préparation d'un appel | ✅ |
 | [01](#projet-01) | Union `Success \| Fail`, `if`, `isRight`, `print` | ✅ |
-| [02](#projet-02) | `whenIsRight` + fonction passée en argument | ⬜ |
-| [03](#projet-03) | `pipe` + forme curryfiée | ⬜ |
-| [04](#projet-04) | Plusieurs `return`, `fail()` | ⬜ |
-| [05](#projet-05) | `whenIsRightOtherwise`, fonctions fléchées, `DArray.map`, `DString.to` | ⬜ |
-| [06](#projet-06) | `left("info", v)`, ternaire, `matchInformation` | ⬜ |
-| [07](#projet-07) | `rightPipe` | ⬜ |
-| [08](#projet-08) | Tuples, déstructuration, `map` imbriqués | ⬜ |
-| [09](#projet-09) | `group` (transaction) | ⬜ |
+| [02](#projet-02) | `whenIsRight` + fonction passée en argument | ✅ |
+| [03](#projet-03) | `pipe` + forme curryfiée | ✅ |
+| [04](#projet-04) | Plusieurs `return`, `fail()` | ✅ |
+| [05](#projet-05) | `whenIsRightOtherwise`, fonctions fléchées, `DArray.map`, `DString.to` | ✅ |
+| [06](#projet-06) | `left("info", v)`, ternaire, `matchInformation` | ✅ |
+| [07](#projet-07) | `rightPipe` | ✅ |
+| [08](#projet-08) | Tuples, déstructuration, `map` imbriqués | ✅ |
+| [09](#projet-09) | `group` (transaction) | ✅ |
 | [10](#projet-10) | `async` / `await`, `rightAsyncPipe`, `asyncGroup`, `asyncPipe` | ✅ |
 
 **Valider un projet** (sous WSL, voir D-01 et D-14) :
@@ -70,32 +73,34 @@ Objet Fail (projet 04) :
 **Instructions**
 - ✔ appel autonome · ✔ `return expr` · ✔ bloc
 - ✔ `const` / `let` avec un identifiant et un initialiseur (variable locale et variable du module, D-07) · ✔ `if` / `else` · ✔ `return` sans valeur
+- ✔ affectation, `+=`, `++` · ✔ `for…of`, `while`, `for`, `break`, `continue` · ✔ `switch` (avec `fallthrough`) · ✔ déstructuration de tableau et d'objet (D-19)
 
 **Expressions**
 - ✔ identifiant (y compris entre fichiers) · ✔ littéral numérique → `float64` · ✔ binaire arithmétique
-- ✔ comparaisons, `||`, `&&` · ✔ littéral de chaîne · ✔ unaires · ✔ parenthèses · ✔ ternaire · ✔ fonction fléchée · ✔ littéral de tableau/tuple · littéral d'objet (handlers de `matchInformation`) · ✔ `await`
+- ✔ comparaisons, `||`, `&&` · ✔ littéral de chaîne · ✔ unaires · ✔ parenthèses · ✔ ternaire · ✔ fonction fléchée · ✔ littéral de tableau/tuple · ✔ littéral d'objet des handlers de `matchInformation` · ✔ adaptation au narrowing et élargissement vers un Either (D-18.2)
+- ✔ accès à une propriété et à un élément · ✔ `.length` · ✔ littéral d'objet · ✔ template string · ✔ `typeof` · ✔ `??` · ✔ `Math.*` (D-19)
+- ⬜ `?.` · ⬜ `await` (projet 10)
 
 **Types**
 - ✔ `number`
-- ✔ `string` · ✔ tableau `T[]` · ✔ tuple `[A, B, C]` · ✔ unions d'`Either` · ✔ `Promise<T>` · ✔ type de retour inféré (via le checker)
+- ✔ `string` · ✔ `boolean` · ✔ `null` / `undefined` · ✔ tableau `T[]` · ✔ tuple (une slice, D-18.5) · ✔ objet (struct anonyme) · ✔ `Record<string, T>` · ✔ fonction · ✔ unions d'`Either` (`EitherAny`) · ✔ `Promise<T>` · ✔ type de retour inféré · ✔ `type` / `interface` ignorés (D-18.6). Le tout dans **`tsTypeToGo`** (D-18).
 
 **Paramètres**
-- identifiant simple ✔ · déstructuration de tuple `[a, b, c]` ✔
+- identifiant simple ✔ · déstructuration de tuple `[a, b, c]` ✔ · déstructuration d'objet `{ index }` ✔
 
 **Validation de l'étape 6** : `tests/language-basics/` couvre 32 cas à
 l'exécution, dont les variables module/locales, les deux branches d'un ternaire,
 les deux formes de fonction fléchée, les tableaux et les tuples homogènes et
-hétérogènes. Le projet 01 passe ; les projets suivants sont maintenant bloqués
-par `DArray.map` ou `DArray.coalescing` (étape 8).
+hétérogènes.
 
 **Domaine DuploJS**
 - Either :
-  - ✔ `success` / `Success<T>` (bug B-01) ;
-  - `fail` · `left` · `isRight` · `whenIsRight` · `whenIsRightOtherwise` · `matchInformation` · `rightPipe` · `group` · ✔ `rightAsyncPipe` · ✔ `asyncGroup` ;
-  - types `Fail`, `Left`.
-- Common : `pipe` · ✔ `asyncPipe` · `print`
-- Array : `coalescing` · `map`
-- String : `to`
+  - ✔ `success` · ✔ `fail` · ✔ `left` · ✔ `right` · ✔ `error` · ✔ `isRight` · ✔ `isLeft` · ✔ `unwrapRight` · ✔ `whenIsRight` · ✔ `whenIsRightOtherwise` · ✔ `matchInformation` · ✔ `rightPipe` · ✔ `group` (tableau et objet) ;
+  - ⬜ `rightAsyncPipe` · ⬜ `asyncGroup` (projet 10) ;
+  - ✔ types `Success`, `Fail`, `Error`, `Left`, `Right` et leurs unions.
+- Common : ✔ `pipe` · ✔ `print` · ⬜ `asyncPipe` (projet 10)
+- Array : ✔ `coalescing` · ✔ `map`
+- String : ✔ `to` · ✔ `length`, `slice`, `substring`, `charAt`, `at`, `indexOf`, `includes`, `startsWith`, `endsWith`, `toUpperCase`, `toLowerCase` (D-18.4)
 
 ---
 
@@ -136,12 +141,11 @@ func Sourced_add(Sourced_one float64, Sourced_two float64) (shard_dependencies.E
 
 **Problèmes posés** : représenter un retour à plusieurs variantes ; traduire un `if`.
 
-**Réponse prévue** :
-- l'union d'`Either` devient une struct avec un tag (D-09) ;
-- `return success(...)` est converti vers ce type d'union ;
-- `isRight(r)` devient une comparaison de tag ;
-- `print` passe par `json.Marshal` puis l'affichage (à vérifier par rapport à la sortie TS) ;
-- `const result` est déclaré au niveau du module (D-07).
+**Réponse** :
+- l'union d'`Either` devient un `EitherAny` (tag entier + valeur, D-09 et D-18) ;
+- `isRight(r)` devient `r.Tag.IsRight()` (une table indexée par le tag) ;
+- `print` reproduit `util.inspect` de Node par réflexion (étape 4), sans JSON ;
+- `const result` est déclaré au niveau du module et initialisé dans `init()` (D-07).
 
 **Go obtenu** : `result` est une variable de package initialisée dans `init()`,
 puis le `if` appelle la méthode de test du tag et le printer partagé.
@@ -156,14 +160,46 @@ puis le `if` appelle la méthode de test du tag et le printer partagé.
 
 **Problème posé** : un appel qui reçoit une fonction et ne l'applique qu'à la valeur `Right`.
 
-**Réponse prévue** :
-- appel du helper générique `WhenIsRight(r, coalescing)` (D-09.3), qui applique `coalescing` seulement si `r` est une droite ;
-- `coalescing` devient une shared dependency générique.
-- Point à clarifier : le type de sortie, qui est l'union des deux branches.
+**Réponse** :
+- appel du helper générique `WhenIsRight(r, f)` (D-09.3), qui applique `f` seulement si `r` est une droite, et range le résultat brut avec `TagValue` (D-16) ;
+- `DArray.coalescing`, passé comme fonction, devient une fonction Go littérale typée par le contexte. Le « tableau ou valeur ? » est **décidé à la compilation** (`number` → `[]float64{v}`, D-18.5) ;
+- le type de sortie (`readonly [number] | Fail`) est un `EitherAny`.
 
-**Go visé** : _à remplir_
+**Go obtenu** (`projects/02/dist/index.ts/index.ts.go`, étape 9) :
 
-**État** : ⬜
+<details>
+<summary>Afficher le Go généré</summary>
+
+Les noms de package sont abrégés ici (`add_ts`) : le transpileur les écrit encore avec le chemin absolu du fichier (bug B-02, étape 11).
+
+```go
+import "duplojs.local/transpiled/add.ts"
+import "duplojs.local/transpiled/shard_dependencies"
+
+var Sourced_result shard_dependencies.EitherAny
+
+var Sourced_newResult shard_dependencies.EitherAny
+
+func init() {
+	Sourced_result = add_ts.Sourced_add((float64)(1), (float64)(2))
+	Generated_1 := Sourced_result.Tag.IsRight()
+	if Generated_1 {
+		Generated_2 := shard_dependencies.Print[any]
+		Generated_2(Sourced_result)
+	}
+	Sourced_newResult = shard_dependencies.WhenIsRight(Sourced_result, func(Generated_3 float64) ([]float64) {
+		return ([]float64{
+			Generated_3,
+		})
+	})
+	Generated_4 := shard_dependencies.Print[any]
+	Generated_4(Sourced_newResult)
+}
+```
+
+</details>
+
+**État** : ✅ `./.commands/check.sh 02` passe (transpilation, compilation et sortie identique à TypeScript).
 
 ---
 
@@ -173,11 +209,48 @@ puis le `if` appelle la méthode de test du tag et le printer partagé.
 
 **Problème posé** : une composition en pipe, avec une forme curryfiée.
 
-**Réponse prévue** : dérouler le pipe à la compilation (D-10) : `t1 := result`, puis `t2 := WhenIsRight(t1, coalescing)`. Chaque étape curryfiée reçoit la valeur de l'étape précédente comme premier argument, ce qui ramène au projet 02.
+**Réponse** : dérouler le pipe à la compilation (D-10) : `t1 := result`, puis `t2 := WhenIsRight(t1, coalescing)`. Chaque étape curryfiée reçoit la valeur de l'étape précédente comme premier argument, ce qui ramène au projet 02.
 
-**Go visé** : _à remplir_
+**Go obtenu** (`projects/03/dist/index.ts/index.ts.go`, étape 9) :
 
-**État** : ⬜
+<details>
+<summary>Afficher le Go généré</summary>
+
+Les noms de package sont abrégés ici (`add_ts`) : le transpileur les écrit encore avec le chemin absolu du fichier (bug B-02, étape 11).
+
+```go
+import "duplojs.local/transpiled/add.ts"
+import "duplojs.local/transpiled/shard_dependencies"
+
+var Sourced_result shard_dependencies.EitherAny
+
+var Sourced_newResult shard_dependencies.EitherAny
+
+func init() {
+	Sourced_result = add_ts.Sourced_add((float64)(1), (float64)(2))
+	Generated_1 := Sourced_result.Tag.IsRight()
+	if Generated_1 {
+		Generated_2 := shard_dependencies.Print[any]
+		Generated_2(Sourced_result)
+	}
+	Generated_3 := Sourced_result
+	Generated_6 := func(Generated_4 shard_dependencies.EitherAny) (shard_dependencies.EitherAny) {
+		return shard_dependencies.WhenIsRight(Generated_4, func(Generated_5 float64) ([]float64) {
+			return ([]float64{
+				Generated_5,
+			})
+		})
+	}
+	Generated_7 := Generated_6(Generated_3)
+	Sourced_newResult = Generated_7
+	Generated_8 := shard_dependencies.Print[any]
+	Generated_8(Sourced_newResult)
+}
+```
+
+</details>
+
+**État** : ✅ `./.commands/check.sh 03` passe (transpilation, compilation et sortie identique à TypeScript).
 
 ---
 
@@ -187,14 +260,52 @@ puis le `if` appelle la méthode de test du tag et le printer partagé.
 
 **Problème posé** : plusieurs chemins de retour.
 
-**Réponse prévue** :
-- le type de retour est inféré par le checker (`Fail | Success<number>`) et devient le type d'union de D-09 ;
-- chaque `return` est converti vers ce type ;
-- `===` devient `==`.
+**Réponse** :
+- le type de retour est inféré par le checker (`Fail | Success<number>`) et devient un `EitherAny` ;
+- chaque `return` produit directement un `EitherAny` (`fail` et `success` sont des littéraux de struct) ;
+- `===` devient `==`, et `-1` passe par le moins unaire (étape 6).
 
-**Go visé** : _à remplir_
+**Go obtenu** (`projects/04/dist/index.ts/index.ts.go`, étape 9) :
 
-**État** : ⬜
+<details>
+<summary>Afficher le Go généré</summary>
+
+Les noms de package sont abrégés ici (`add_ts`) : le transpileur les écrit encore avec le chemin absolu du fichier (bug B-02, étape 11).
+
+```go
+import "duplojs.local/transpiled/add.ts"
+import "duplojs.local/transpiled/shard_dependencies"
+
+var Sourced_result shard_dependencies.EitherAny
+
+var Sourced_newResult shard_dependencies.EitherAny
+
+func init() {
+	Generated_1 := -((float64)(1))
+	Sourced_result = add_ts.Sourced_add(Generated_1, (float64)(2))
+	Generated_2 := Sourced_result.Tag.IsRight()
+	if Generated_2 {
+		Generated_3 := shard_dependencies.Print[any]
+		Generated_3(Sourced_result)
+	}
+	Generated_4 := Sourced_result
+	Generated_7 := func(Generated_5 shard_dependencies.EitherAny) (shard_dependencies.EitherAny) {
+		return shard_dependencies.WhenIsRight(Generated_5, func(Generated_6 float64) ([]float64) {
+			return ([]float64{
+				Generated_6,
+			})
+		})
+	}
+	Generated_8 := Generated_7(Generated_4)
+	Sourced_newResult = Generated_8
+	Generated_9 := shard_dependencies.Print[any]
+	Generated_9(Sourced_newResult)
+}
+```
+
+</details>
+
+**État** : ✅ `./.commands/check.sh 04` passe (transpilation, compilation et sortie identique à TypeScript).
 
 ---
 
@@ -204,15 +315,71 @@ puis le `if` appelle la méthode de test du tag et le printer partagé.
 
 **Problèmes posés** : traiter différemment chaque issue ; transformer chaque élément d'une collection.
 
-**Réponse prévue** :
+**Réponse** :
 - `whenIsRightOtherwise` devient un appel au helper `WhenIsRightOtherwise(r, f, g)` (D-09.3) ;
-- la fonction fléchée `() => [-12]` devient un `func` littéral Go ;
-- `DArray.map` devient une boucle `for range` qui remplit un slice pré-alloué (`make([]T, 0, len(xs))`) ;
+- la fonction fléchée `() => [-12]` devient un `func` littéral Go, enveloppé parce qu'elle déclare moins de paramètres que ce qu'elle reçoit ;
+- `readonly [number] | number[]` est une seule slice `[]float64` (D-18.5) ;
+- `DArray.map` devient le helper `Map[T, U]`, qui alloue la slice de sortie une seule fois à sa taille ;
 - `DString.to` utilise un formatage fidèle à JS (D-12).
 
-**Go visé** : _à remplir_
+**Go obtenu** (`projects/05/dist/index.ts/index.ts.go`, étape 9) :
 
-**État** : ⬜
+<details>
+<summary>Afficher le Go généré</summary>
+
+Les noms de package sont abrégés ici (`add_ts`) : le transpileur les écrit encore avec le chemin absolu du fichier (bug B-02, étape 11).
+
+```go
+import "duplojs.local/transpiled/add.ts"
+import "duplojs.local/transpiled/shard_dependencies"
+
+var Sourced_result shard_dependencies.EitherAny
+
+var Sourced_newResult []string
+
+func init() {
+	Sourced_result = add_ts.Sourced_add((float64)(1), (float64)(2))
+	Generated_1 := Sourced_result.Tag.IsRight()
+	if Generated_1 {
+		Generated_2 := shard_dependencies.Print[any]
+		Generated_2(Sourced_result)
+	}
+	Generated_3 := Sourced_result
+	Generated_7 := func() ([]float64) {
+		Generated_6 := -((float64)(12))
+		return ([]float64{
+			Generated_6,
+		})
+	}
+	Generated_8 := func(Generated_4 shard_dependencies.EitherAny) ([]float64) {
+		return shard_dependencies.WhenIsRightOtherwise(Generated_4, func(Generated_5 float64) ([]float64) {
+			return ([]float64{
+				Generated_5,
+			})
+		}, func(_ shard_dependencies.EitherAny) ([]float64) {
+			return Generated_7()
+		})
+	}
+	Generated_10 := shard_dependencies.JSNumberToString
+	Generated_12 := func(Generated_9 []float64) ([]string) {
+		return shard_dependencies.Map(Generated_9, func(Generated_11 float64, _ struct {
+			Sourced_index float64 "json:\"index\""
+			Sourced_self []float64 "json:\"self\""
+		}) (string) {
+			return Generated_10(Generated_11)
+		})
+	}
+	Generated_13 := Generated_8(Generated_3)
+	Generated_14 := Generated_12(Generated_13)
+	Sourced_newResult = Generated_14
+	Generated_15 := shard_dependencies.Print[any]
+	Generated_15(Sourced_newResult)
+}
+```
+
+</details>
+
+**État** : ✅ `./.commands/check.sh 05` passe (transpilation, compilation et sortie identique à TypeScript).
 
 ---
 
@@ -222,14 +389,88 @@ puis le `if` appelle la méthode de test du tag et le printer partagé.
 
 **Problèmes posés** : erreurs identifiées avec leur contexte ; expression ternaire.
 
-**Réponse prévue** :
-- l'information devient une constante de tag, avec sa valeur dans `Value` ;
+**Réponse** :
+- l'information devient une constante de tag (`TagLeftNegativeOperand`), avec sa valeur dans `Value` ;
 - le ternaire devient `var t T; if cond { t = a } else { t = b }`, placé dans `before` ;
 - `matchInformation` devient `MatchInformation(r, handlers)`, où `handlers` est un slice de fonctions rangé par numéro de tag : la fonction de `"negative-operand"` est rangée à l'indice `TagNegativeOperand`, etc. (D-09.3).
 
-**Go visé** : _à remplir_
+**Go obtenu** (`projects/06/dist/index.ts/index.ts.go`, étape 9) :
 
-**État** : ⬜
+<details>
+<summary>Afficher le Go généré</summary>
+
+Les noms de package sont abrégés ici (`add_ts`) : le transpileur les écrit encore avec le chemin absolu du fichier (bug B-02, étape 11).
+
+```go
+import "duplojs.local/transpiled/add.ts"
+import "duplojs.local/transpiled/shard_dependencies"
+
+var Sourced_result shard_dependencies.EitherAny
+
+var Sourced_newResult []string
+
+var Sourced_message string
+
+func init() {
+	Generated_1 := -((float64)(1))
+	Sourced_result = add_ts.Sourced_add(Generated_1, (float64)(2))
+	Generated_2 := Sourced_result.Tag.IsRight()
+	if Generated_2 {
+		Generated_3 := shard_dependencies.Print[any]
+		Generated_3(Sourced_result)
+	}
+	Generated_4 := Sourced_result
+	Generated_8 := func() ([]float64) {
+		Generated_7 := -((float64)(12))
+		return ([]float64{
+			Generated_7,
+		})
+	}
+	Generated_9 := func(Generated_5 shard_dependencies.EitherAny) ([]float64) {
+		return shard_dependencies.WhenIsRightOtherwise(Generated_5, func(Generated_6 float64) ([]float64) {
+			return ([]float64{
+				Generated_6,
+			})
+		}, func(_ shard_dependencies.EitherAny) ([]float64) {
+			return Generated_8()
+		})
+	}
+	Generated_11 := shard_dependencies.JSNumberToString
+	Generated_13 := func(Generated_10 []float64) ([]string) {
+		return shard_dependencies.Map(Generated_10, func(Generated_12 float64, _ struct {
+			Sourced_index float64 "json:\"index\""
+			Sourced_self []float64 "json:\"self\""
+		}) (string) {
+			return Generated_11(Generated_12)
+		})
+	}
+	Generated_14 := Generated_9(Generated_4)
+	Generated_15 := Generated_13(Generated_14)
+	Sourced_newResult = Generated_15
+	Generated_16 := func() (string) {
+		return "un opérande est négatif"
+	}
+	Generated_17 := func(Sourced_value float64) (string) {
+		return shard_dependencies.JSNumberToString(Sourced_value)
+	}
+	Sourced_message = shard_dependencies.MatchInformation(Sourced_result, ([]func(p0 any) (string){
+		shard_dependencies.TagLeftNegativeOperand: func(_ any) (string) {
+			return Generated_16()
+		},
+		shard_dependencies.TagRightSuccess: func(Generated_18 any) (string) {
+			return Generated_17(Generated_18.(float64))
+		},
+	}))
+	Generated_19 := shard_dependencies.Print[any]
+	Generated_19(Sourced_newResult)
+	Generated_20 := shard_dependencies.Print[any]
+	Generated_20(Sourced_message)
+}
+```
+
+</details>
+
+**État** : ✅ `./.commands/check.sh 06` passe (transpilation, compilation et sortie identique à TypeScript).
 
 ---
 
@@ -239,13 +480,93 @@ puis le `if` appelle la méthode de test du tag et le printer partagé.
 
 **Problème posé** : enchaîner des opérations dépendantes et s'arrêter au premier échec.
 
-**Réponse prévue** :
+**Réponse** :
 - `rightPipe(r, f, g)` devient des appels emboîtés au helper à deux arguments `RightThen(RightThen(r, f), g)`. `RightThen` renvoie `r` tel quel si c'est une gauche, sinon `f(r.Value)` (D-09.3) ;
-- le type final est l'union de toutes les gauches et de la dernière droite.
+- le type final (l'union de toutes les gauches et de la dernière droite) est un `EitherAny`.
 
-**Go visé** : _à remplir_
+**Go obtenu** (`projects/07/dist/index.ts/index.ts.go`, étape 9) :
 
-**État** : ⬜
+<details>
+<summary>Afficher le Go généré</summary>
+
+Les noms de package sont abrégés ici (`add_ts`) : le transpileur les écrit encore avec le chemin absolu du fichier (bug B-02, étape 11).
+
+```go
+import "duplojs.local/transpiled/add.ts"
+import "duplojs.local/transpiled/divide.ts"
+import "duplojs.local/transpiled/shard_dependencies"
+
+var Sourced_result shard_dependencies.EitherAny
+
+var Sourced_newResult []string
+
+var Sourced_message string
+
+func init() {
+	Sourced_result = shard_dependencies.RightThen(add_ts.Sourced_add((float64)(1), (float64)(2)), func(Sourced_value float64) (shard_dependencies.EitherAny) {
+		return divide_ts.Sourced_divide(Sourced_value, (float64)(0))
+	})
+	Generated_1 := Sourced_result.Tag.IsRight()
+	if Generated_1 {
+		Generated_2 := shard_dependencies.Print[any]
+		Generated_2(Sourced_result)
+	}
+	Generated_3 := Sourced_result
+	Generated_7 := func() ([]float64) {
+		Generated_6 := -((float64)(12))
+		return ([]float64{
+			Generated_6,
+		})
+	}
+	Generated_8 := func(Generated_4 shard_dependencies.EitherAny) ([]float64) {
+		return shard_dependencies.WhenIsRightOtherwise(Generated_4, func(Generated_5 float64) ([]float64) {
+			return ([]float64{
+				Generated_5,
+			})
+		}, func(_ shard_dependencies.EitherAny) ([]float64) {
+			return Generated_7()
+		})
+	}
+	Generated_10 := shard_dependencies.JSNumberToString
+	Generated_12 := func(Generated_9 []float64) ([]string) {
+		return shard_dependencies.Map(Generated_9, func(Generated_11 float64, _ struct {
+			Sourced_index float64 "json:\"index\""
+			Sourced_self []float64 "json:\"self\""
+		}) (string) {
+			return Generated_10(Generated_11)
+		})
+	}
+	Generated_13 := Generated_8(Generated_3)
+	Generated_14 := Generated_12(Generated_13)
+	Sourced_newResult = Generated_14
+	Generated_15 := func() (string) {
+		return "un opérande est négatif"
+	}
+	Generated_16 := func() (string) {
+		return "division par zéro impossible"
+	}
+	Generated_17 := shard_dependencies.JSNumberToString
+	Sourced_message = shard_dependencies.MatchInformation(Sourced_result, ([]func(p0 any) (string){
+		shard_dependencies.TagLeftNegativeOperand: func(_ any) (string) {
+			return Generated_15()
+		},
+		shard_dependencies.TagLeftDivisionByZero: func(_ any) (string) {
+			return Generated_16()
+		},
+		shard_dependencies.TagRightSuccess: func(Generated_18 any) (string) {
+			return Generated_17(Generated_18.(float64))
+		},
+	}))
+	Generated_19 := shard_dependencies.Print[any]
+	Generated_19(Sourced_newResult)
+	Generated_20 := shard_dependencies.Print[any]
+	Generated_20(Sourced_message)
+}
+```
+
+</details>
+
+**État** : ✅ `./.commands/check.sh 07` passe (transpilation, compilation et sortie identique à TypeScript).
 
 ---
 
@@ -255,15 +576,92 @@ puis le `if` appelle la méthode de test du tag et le printer partagé.
 
 **Problèmes posés** : collection de calculs ; tableau de tuples ; déstructuration dans un paramètre.
 
-**Réponse prévue** (mise à jour par D-18.5) :
+**Réponse** (D-18.5) :
 - le tuple devient **`[]float64`** (une slice, comme un tableau JS ; plus `[3]float64`) ;
 - le tableau devient `[][]float64` ;
 - la déstructuration devient un paramètre `p []float64` suivi de `one, two, divisor := p[0], p[1], p[2]` au début du corps (étape 6) ;
-- les deux `map` (avec données, puis curryfié dans un `pipe` avec `whenIsRightOtherwise(DString.to, …)` comme callback) sont **déjà traduits et vérifiés** contre l'affichage de Node (`tests/maps-advanced/`). Il manque `const`, la fonction fléchée, la déstructuration et le littéral `"échec"` (étape 6).
+- les deux `map` (avec données, puis curryfié dans un `pipe` avec `whenIsRightOtherwise(DString.to, …)` comme callback) passent par le helper `Map`, et sont aussi vérifiés contre l'affichage de Node dans `tests/maps-advanced/`.
 
-**Go visé** : _à remplir_
+**Go obtenu** (`projects/08/dist/index.ts/index.ts.go`, étape 9) :
 
-**État** : ⬜
+<details>
+<summary>Afficher le Go généré</summary>
+
+Les noms de package sont abrégés ici (`add_ts`) : le transpileur les écrit encore avec le chemin absolu du fichier (bug B-02, étape 11).
+
+```go
+import "duplojs.local/transpiled/add.ts"
+import "duplojs.local/transpiled/divide.ts"
+import "duplojs.local/transpiled/shard_dependencies"
+
+var Sourced_inputs [][]float64
+
+var Sourced_calculations []shard_dependencies.EitherAny
+
+var Sourced_display []string
+
+func init() {
+	Generated_1 := ([]float64{
+		(float64)(1),
+		(float64)(2),
+		(float64)(1),
+	})
+	Generated_2 := ([]float64{
+		(float64)(4),
+		(float64)(5),
+		(float64)(3),
+	})
+	Generated_3 := ([]float64{
+		(float64)(2),
+		(float64)(3),
+		(float64)(0),
+	})
+	Sourced_inputs = ([][]float64{
+		Generated_1,
+		Generated_2,
+		Generated_3,
+	})
+	Generated_5 := func(Generated_4 []float64) (shard_dependencies.EitherAny) {
+		Sourced_one := Generated_4[0]
+		Sourced_two := Generated_4[1]
+		Sourced_divisor := Generated_4[2]
+		return shard_dependencies.RightThen(add_ts.Sourced_add(Sourced_one, Sourced_two), func(Sourced_value float64) (shard_dependencies.EitherAny) {
+			return divide_ts.Sourced_divide(Sourced_value, Sourced_divisor)
+		})
+	}
+	Sourced_calculations = shard_dependencies.Map(Sourced_inputs, func(Generated_6 []float64, _ struct {
+		Sourced_index float64 "json:\"index\""
+		Sourced_self [][]float64 "json:\"self\""
+	}) (shard_dependencies.EitherAny) {
+		return Generated_5(Generated_6)
+	})
+	Generated_7 := Sourced_calculations
+	Generated_10 := func() (string) {
+		return "échec"
+	}
+	Generated_11 := func(Generated_9 shard_dependencies.EitherAny) (string) {
+		return shard_dependencies.WhenIsRightOtherwise(Generated_9, shard_dependencies.JSNumberToString, func(_ shard_dependencies.EitherAny) (string) {
+			return Generated_10()
+		})
+	}
+	Generated_13 := func(Generated_8 []shard_dependencies.EitherAny) ([]string) {
+		return shard_dependencies.Map(Generated_8, func(Generated_12 shard_dependencies.EitherAny, _ struct {
+			Sourced_index float64 "json:\"index\""
+			Sourced_self []shard_dependencies.EitherAny "json:\"self\""
+		}) (string) {
+			return Generated_11(Generated_12)
+		})
+	}
+	Generated_14 := Generated_13(Generated_7)
+	Sourced_display = Generated_14
+	Generated_15 := shard_dependencies.Print[any]
+	Generated_15(Sourced_display)
+}
+```
+
+</details>
+
+**État** : ✅ `./.commands/check.sh 08` passe (transpilation, compilation et sortie identique à TypeScript).
 
 ---
 
@@ -273,14 +671,91 @@ puis le `if` appelle la méthode de test du tag et le printer partagé.
 
 **Problème posé** : regrouper des résultats et échouer dès qu'un seul échoue.
 
-**Réponse prévue** : le helper `Group(rs)` boucle sur les résultats, s'arrête au premier `left` et le renvoie ; sinon, il construit le slice des valeurs.
+**Réponse** : le helper `Group[T](rs []EitherAny)` boucle sur les résultats, s'arrête au **premier** échec et le renvoie ; sinon, il renvoie un `success` de la slice des valeurs (comme DuploJS, vérifié dans sa source).
 - **Type de retour** : `Success<number[]> | Left<…, number>`. Depuis D-18, c'est simplement un **`EitherAny`** (`Either2` n'existe plus) : la valeur est un `[]float64` pour le succès, un `float64` pour la gauche, et chaque lecteur l'ouvre avec le type que TypeScript connaît.
 - `calculations` est un `[]EitherAny` (`DArray.map` qui produit des Either : vérifié dans `tests/maps-advanced/`).
-- Point à clarifier : quelle gauche est renvoyée (la première ?). À vérifier dans la source de `@duplojs/lang` (étape 7).
+- DuploJS accepte aussi un **objet** de résultats, avec des **fonctions** appelées à la demande : traduit depuis D-19 (`group({ a, b: () => f() })`). Le tableau de fonctions n'est pas encore traduit.
 
-**Go visé** : _à remplir_
+**Go obtenu** (`projects/09/dist/index.ts/index.ts.go`, étape 9) :
 
-**État** : ⬜
+<details>
+<summary>Afficher le Go généré</summary>
+
+Les noms de package sont abrégés ici (`add_ts`) : le transpileur les écrit encore avec le chemin absolu du fichier (bug B-02, étape 11).
+
+```go
+import "duplojs.local/transpiled/add.ts"
+import "duplojs.local/transpiled/divide.ts"
+import "duplojs.local/transpiled/shard_dependencies"
+
+var Sourced_inputs [][]float64
+
+var Sourced_calculations []shard_dependencies.EitherAny
+
+var Sourced_transaction shard_dependencies.EitherAny
+
+var Sourced_display []string
+
+func init() {
+	Generated_1 := ([]float64{
+		(float64)(1),
+		(float64)(2),
+		(float64)(1),
+	})
+	Generated_2 := ([]float64{
+		(float64)(4),
+		(float64)(5),
+		(float64)(3),
+	})
+	Generated_3 := ([]float64{
+		(float64)(2),
+		(float64)(3),
+		(float64)(0),
+	})
+	Sourced_inputs = ([][]float64{
+		Generated_1,
+		Generated_2,
+		Generated_3,
+	})
+	Generated_5 := func(Generated_4 []float64) (shard_dependencies.EitherAny) {
+		Sourced_one := Generated_4[0]
+		Sourced_two := Generated_4[1]
+		Sourced_divisor := Generated_4[2]
+		return shard_dependencies.RightThen(add_ts.Sourced_add(Sourced_one, Sourced_two), func(Sourced_value float64) (shard_dependencies.EitherAny) {
+			return divide_ts.Sourced_divide(Sourced_value, Sourced_divisor)
+		})
+	}
+	Sourced_calculations = shard_dependencies.Map(Sourced_inputs, func(Generated_6 []float64, _ struct {
+		Sourced_index float64 "json:\"index\""
+		Sourced_self [][]float64 "json:\"self\""
+	}) (shard_dependencies.EitherAny) {
+		return Generated_5(Generated_6)
+	})
+	Sourced_transaction = shard_dependencies.Group[float64](Sourced_calculations)
+	Generated_9 := func() ([]string) {
+		return ([]string{
+			"transaction annulée",
+		})
+	}
+	Sourced_display = shard_dependencies.WhenIsRightOtherwise(Sourced_transaction, func(Sourced_values []float64) ([]string) {
+		Generated_7 := shard_dependencies.JSNumberToString
+		return shard_dependencies.Map(Sourced_values, func(Generated_8 float64, _ struct {
+			Sourced_index float64 "json:\"index\""
+			Sourced_self []float64 "json:\"self\""
+		}) (string) {
+			return Generated_7(Generated_8)
+		})
+	}, func(_ shard_dependencies.EitherAny) ([]string) {
+		return Generated_9()
+	})
+	Generated_10 := shard_dependencies.Print[any]
+	Generated_10(Sourced_display)
+}
+```
+
+</details>
+
+**État** : ✅ `./.commands/check.sh 09` passe (transpilation, compilation et sortie identique à TypeScript).
 
 ---
 

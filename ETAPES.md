@@ -21,9 +21,9 @@ Chaque étape indique : **le but**, **ce qu'il faut avoir lu**, **ce qu'il faut 
 | 4 | [`print` fidèle à Node (`util.inspect`)](#étape-4--print-fidèle-à-node) | — | Wilbour | ✅ |
 | 5 | [Helper de préparation](#étape-5--helper-de-préparation) | — | Yacine | ✅ (mergée, PR #11) |
 | 6 | [Transformers de base du langage](#étape-6--transformers-de-base-du-langage) | 5 | Wilbour | ✅ (PR #14) |
-| 7 | [Domaine Either (handlers)](#étape-7--domaine-either) | 3, 5 | Claude, puis *(à remplir)* | 🟨 tout est fait sauf `group` (projet 09), en cours |
+| 7 | [Domaine Either (handlers)](#étape-7--domaine-either) | 3, 5 | Claude, puis Mrlbe1 | ✅ (`group` : PR #15) |
 | 8 | [Domaines Common / Array / String](#étape-8--domaines-common--array--string) | 4, 5 | Claude | ✅ 8a (`pipe`, formes curryfiées), 8b (`DString.*`, `DArray.map`, `DArray.coalescing`, D-18.4 et D-18.5) ; `print` fait à l'étape 4 |
-| 9 | [Valider les projets 01 → 09](#étape-9--valider-les-projets-01--09) | 6, 7, 8 | tout le monde | 🟨 00 à 08 passent ; le 09 attend `group` |
+| 9 | [Valider les projets 01 → 09](#étape-9--valider-les-projets-01--09) | 6, 7, 8 | tout le monde | ✅ les 10 projets (00 à 09) passent |
 | 10 | [Projet 10 (asynchrone)](#étape-10--projet-10-asynchrone) | 9 | | ⬜ |
 | 11 | [Performance et finitions](#étape-11--performance-et-finitions) | 9 | | ⬜ |
 
@@ -124,7 +124,7 @@ tests/<nom>/
 - `pnpm test:runtime` lance tous les tests, et `./.commands/test-runtime.sh either` un seul.
 - Le script transpile le dossier, copie `check/` dans `dist/`, puis lance `go vet` et `go run ./check`.
 - `check/main.go` importe le package transpilé (par exemple `shapes "duplojs.local/transpiled/shapes.ts"`) et appelle les fonctions sous leur nom Go (`shapes.Sourced_maFonction(...)`). Il doit **sortir avec un code d'erreur** si un contrôle échoue (`os.Exit(1)`).
-- Exemple complet : `tests/either/` (étape 3). Liste actuelle (17 tests) : `arrays`, `async`, `composite-types`, `dstring-to`, `either`, `either-helpers`, `js-number-to-string`, `js-operators`, `language-basics`, `maps-advanced`, `narrowing`, `pipe`, `preparation`, `print`, `strings`, `ts-types`, `type-declarations`.
+- Exemple complet : `tests/either/` (étape 3). Liste actuelle (17 tests) : `arrays`, `composite-types`, `dstring-to`, `either`, `either-helpers`, `js-number-to-string`, `js-operators`, `language-basics`, `language-extended`, `maps-advanced`, `narrowing`, `pipe`, `preparation`, `print`, `strings`, `ts-types`, `type-declarations`.
 - **Valeurs attendues** : calcule-les en exécutant **le même TypeScript avec `tsx`**, ne les écris pas de tête. Pour beaucoup de cas, génère `check/cases.go` depuis Node (exemple : `tests/strings/generate.ts`, 6 438 cas). Pour un affichage, compare `shard.Inspect(x)` à `util.inspect(x)` de Node (exemple : `tests/maps-advanced/`).
 - **Piège** : dans `check/main.go`, une constante Go rangée dans un `any` garde son type par défaut (`Value: 2` est un `int`). Le Go transpilé lit un `float64` : écris `float64(2)`.
 - **Variante « générateur »** : si le dossier contient un `check.ts` (et pas de `check/main.go`), le script le lance seul avec `tsx`. Il génère et exécute lui-même son Go, ce qui permet de tester une **shared dependency** sans TypeScript à transpiler. Exemple : `tests/js-number-to-string/` imprime le helper Go tel que le transpileur le génère, puis le compare à `String(x)` de Node sur 2 034 nombres.
@@ -298,8 +298,7 @@ Les règles à reproduire :
 
 **À lire avant** : étape 5 terminée, **l'étape 3b** (`tsTypeToGo`, l'adaptateur, `transformCallback`), et la section « Inventaire des transformers » de `EXERCICES.md`.
 
-**État mesuré** (19/11, après l'étape 10) : `check.sh` passe pour les projets
-**00 à 08 et 10**. Le 09 attend encore `DEither.group` (étape 7).
+**État mesuré** (19/11, après les PR #14 et #15) : `check.sh` passe pour les projets **00 à 09**. Le 10 attend l'asynchrone (`rightAsyncPipe`, étapes 7 et 10).
 
 **À faire** : un transformer par ligne, à tester au fur et à mesure. **Les types Go viennent toujours de `tsTypeToGo`**, jamais d'une règle écrite dans ton transformer.
 
@@ -316,13 +315,15 @@ Les règles à reproduire :
 | `[a, b]` (tableau ou tuple) | `[]T{a, b}` ; `[]any{a, b}` si les éléments ont des types Go différents | 05+ | ✅ |
 | tuple `[number, number, number]` | **`[]float64`** (une slice, D-18.5) : **pas** `[3]float64` | 08, 09 | ✅ type déjà traduit |
 | paramètre `([a, b, c]) =>` | paramètre `p []float64`, puis `a, b, c := p[0], p[1], p[2]` | 08, 09 | ✅ |
-| `obj.name` (accès à une propriété) | `obj.Sourced_name` ; sur un `any` (tuple hétérogène, `EitherAny.Value`), l'adaptateur ajoute l'assertion | — | ⬜ |
-| `type X = …`, `interface X { … }` | **rien** : Go n'en a pas besoin, le checker lit déjà les types | — | ✅ au niveau du fichier (D-18.6) ; ⬜ **dans une fonction** (`block.ts`) |
+| `obj.name` (accès à une propriété) | `obj.Sourced_name` ; sur un `any` (tuple hétérogène, `EitherAny.Value`), l'adaptateur ajoute l'assertion | — | ✅ (D-19) |
+| `type X = …`, `interface X { … }` | **rien** : Go n'en a pas besoin, le checker lit déjà les types | — | ✅ au niveau du fichier (D-18.6) et dans une fonction (D-19) |
 | `return` sans valeur | `return` | — | ✅ |
+
+**Au-delà des exercices (D-19)** : objets littéraux, accès aux éléments, affectations, `for…of`, `while`, `for`, `break` / `continue`, `switch`, template strings, `typeof`, `??`, `Math.*`, déstructuration d'objet et `group` sur un objet sont traduits et vérifiés contre Node (`tests/language-extended/`, 86 cas).
 
 **Ensuite, deux vérifications obligatoires** :
 1. **Ordre d'évaluation avec des variables** (R-01, remarque n° 2, voir l'étape 5) : à corriger dès que les affectations existent.
-2. **Lecture après narrowing** (D-18.2) : ajouter un test avec `if (DEither.isLeft(x)) { return x; }` puis `x` utilisé comme valeur. C'est écrit mais jamais exécuté.
+2. ~~**Lecture après narrowing** (D-18.2)~~ : ✅ vérifiée à l'exécution (`tests/language-extended/`, D-19).
 
 **Où** : `src/transpiler/transformers/statement/`, `expression/` et `declaration/`, puis ajouter chaque transformer dans le `index.ts` de sa catégorie.
 
@@ -344,8 +345,8 @@ Les règles à reproduire :
 > | `rightPipe(r, f, g…)` | ✅ étapes de types différents, ou qui renvoient une valeur brute | `RightThen(RightThen(r, f), g)` |
 > | `whenIsRight(r, f)` | ✅ (D-16, `TagValue`) | `WhenIsRight[T, V](r, f) EitherAny` ; si `f` renvoie un Either : `RightThen` |
 > | formes sans données (`whenIsRight(fn)`, `whenIsRightOtherwise(f, g)`, `matchInformation({…})`) | ✅ (D-17) | une fonction Go littérale qui appelle le helper |
-> | **`group([…])`** | ⬜ **à faire** (projet 09) ; plus rien ne la bloque : un tableau d'Either est un `[]EitherAny` | par exemple `Group(rs []EitherAny) EitherAny` : `success` de la slice des valeurs, ou le premier `left` |
-> | `rightAsyncPipe`, `asyncGroup` | ✅ projet 10 (étape 10) | versions synchrones et séquentielles (D-11) |
+> | `group([…])` | ✅ (PR #15) | `Group[T](rs)` : renvoie un `EitherAny`, avec le premier échec ou la slice `[]T` des valeurs |
+> | `rightAsyncPipe`, `asyncGroup` | ⬜ projet 10 (étape 10) | comme leurs versions synchrones (D-11) |
 >
 > - **Callbacks** (`either/core/callback.ts`) : un callback qui déclare moins de paramètres est enveloppé ; un `any` reçu est ouvert par assertion ; une fonction DuploJS générique passée en valeur est typée par le contexte, une fonction générique du projet par sa déclaration (D-18.5).
 > - **Vérifié** : `tests/either/`, `tests/either-helpers/`, `tests/narrowing/`, `tests/pipe/`, `tests/maps-advanced/` (les deux `map` du projet 08), `check.sh 00`, lint et types.
@@ -371,14 +372,14 @@ Chaque fonction devient un **helper Go générique écrit une fois à la main** 
 | `whenIsRightOtherwise(r, f, g)` | `WhenIsRightOtherwise[T, U](r, f, g func() U) U` | `WhenIsRightOtherwise(r, f, g)` | 05+ |
 | `matchInformation(r, { … })` | `MatchInformation[T, U](r, handlers []func(T) U) U`, avec les handlers **rangés par numéro de tag** (un slice : pas de map, plus rapide) | `MatchInformation(r, []func(float64) string{…})` | 06, 07 |
 | `rightPipe(r, f, g…)` | `RightThen[T, U](r Either[T], f func(T) Either[U]) Either[U]`, à **deux** arguments (Go n'a pas de génériques variadiques) | `RightThen(RightThen(r, f), g)` : appels emboîtés | 07, 08 |
-| `group([…])` | `Group[T](rs []Either[T]) Either2[[]T, T]`, qui s'arrête au premier `left` | `Group(calculations)` | 09 |
+| `group([...])` | termine : handler et helper Go generique ajoutes | `Group[T](rs)`, renvoie EitherAny avec le premier echec ou []T | 09 |
 | types `Fail`, `Left<…>`, unions | — | `Either[T]` ou `Either2[R, L]` selon la règle de D-09.2 (étape 3) | 01, 04, 09 |
 
 **Conseil** : écrire et tester chaque helper dans un petit programme Go à part (`go run`) **avant** d'écrire le handler qui génère son appel.
 
 **Attention** : les formes **sans données** (`DEither.whenIsRight(fn)`, utilisée dans un `pipe` ou un `map`) se traduisent avec l'étape 8. Le `pipe` fournit la donnée.
 
-**Fini quand** : les projets 01, 02, 04, 06 et 07 n'échouent plus sur une fonction `DEither`.
+**Fini** : les handlers Either sont presents, y compris `group`. Validation des projets dependants apres les transformers de letape 6.
 
 ---
 
@@ -427,6 +428,8 @@ Chaque fonction devient un **helper Go générique écrit une fois à la main** 
 ---
 
 ## Étape 9 — Valider les projets 01 → 09
+
+> ✅ **Faite** (19/11, après les PR #14 et #15). `./.commands/check.sh NN` passe pour **les 10 projets, de 00 à 09** : transpilation, compilation Go, puis sortie **identique** à celle de TypeScript. Le Go obtenu pour chaque projet est dans `EXERCICES.md`.
 
 **But** : que chaque projet affiche exactement la même chose qu'en TypeScript.
 

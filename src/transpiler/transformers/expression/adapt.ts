@@ -87,7 +87,8 @@ async function classify(type: Type | undefined, node: TsAST.Node, context: Build
 async function producedType(node: TsAST.Expression, context: BuildContext) {
 	const { typeChecker } = context.transpilation;
 
-	if (TsAST.isIdentifier(node)) {
+	// Une variable ou un champ (`user.name`) a en Go le type de sa **déclaration**.
+	if (TsAST.isIdentifier(node) || TsAST.isPropertyAccessExpression(node)) {
 		const symbol = await typeChecker.getSymbolAtLocation(node);
 		const declared = symbol && await classify(await typeChecker.getTypeOfSymbol(symbol), node, context);
 
