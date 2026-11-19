@@ -21,7 +21,7 @@ Chaque étape indique : **le but**, **ce qu'il faut avoir lu**, **ce qu'il faut 
 | 4 | [`print` fidèle à Node (`util.inspect`)](#étape-4--print-fidèle-à-node) | — | Wilbour | ✅ |
 | 5 | [Helper de préparation](#étape-5--helper-de-préparation) | — | Yacine | ✅ (mergée, PR #11) |
 | 6 | [Transformers de base du langage](#étape-6--transformers-de-base-du-langage) | 5 | Wilbour | ✅ (PR #14) |
-| 7 | [Domaine Either (handlers)](#étape-7--domaine-either) | 3, 5 | Claude, puis *(à remplir)* | 🟨 tout est fait sauf `group` (projet 09), en cours |
+| 7 | [Domaine Either (handlers)](#étape-7--domaine-either) | 3, 5 | Claude, puis Mrlbe1 | ✅ (`group` : PR #15) |
 | 8 | [Domaines Common / Array / String](#étape-8--domaines-common--array--string) | 4, 5 | Claude | ✅ 8a (`pipe`, formes curryfiées), 8b (`DString.*`, `DArray.map`, `DArray.coalescing`, D-18.4 et D-18.5) ; `print` fait à l'étape 4 |
 | 9 | [Valider les projets 01 → 09](#étape-9--valider-les-projets-01--09) | 6, 7, 8 | tout le monde | 🟨 00 à 08 passent ; le 09 attend `group` |
 | 10 | [Projet 10 (asynchrone)](#étape-10--projet-10-asynchrone) | 9 | | ⬜ |
@@ -343,7 +343,7 @@ Les règles à reproduire :
 > | `rightPipe(r, f, g…)` | ✅ étapes de types différents, ou qui renvoient une valeur brute | `RightThen(RightThen(r, f), g)` |
 > | `whenIsRight(r, f)` | ✅ (D-16, `TagValue`) | `WhenIsRight[T, V](r, f) EitherAny` ; si `f` renvoie un Either : `RightThen` |
 > | formes sans données (`whenIsRight(fn)`, `whenIsRightOtherwise(f, g)`, `matchInformation({…})`) | ✅ (D-17) | une fonction Go littérale qui appelle le helper |
-> | **`group([…])`** | ⬜ **à faire** (projet 09) ; plus rien ne la bloque : un tableau d'Either est un `[]EitherAny` | par exemple `Group(rs []EitherAny) EitherAny` : `success` de la slice des valeurs, ou le premier `left` |
+> | `group([…])` | ✅ (PR #15) | `Group[T](rs)` : renvoie un `EitherAny`, avec le premier échec ou la slice `[]T` des valeurs |
 > | `rightAsyncPipe`, `asyncGroup` | ⬜ projet 10 (étape 10) | comme leurs versions synchrones (D-11) |
 >
 > - **Callbacks** (`either/core/callback.ts`) : un callback qui déclare moins de paramètres est enveloppé ; un `any` reçu est ouvert par assertion ; une fonction DuploJS générique passée en valeur est typée par le contexte, une fonction générique du projet par sa déclaration (D-18.5).
@@ -370,14 +370,14 @@ Chaque fonction devient un **helper Go générique écrit une fois à la main** 
 | `whenIsRightOtherwise(r, f, g)` | `WhenIsRightOtherwise[T, U](r, f, g func() U) U` | `WhenIsRightOtherwise(r, f, g)` | 05+ |
 | `matchInformation(r, { … })` | `MatchInformation[T, U](r, handlers []func(T) U) U`, avec les handlers **rangés par numéro de tag** (un slice : pas de map, plus rapide) | `MatchInformation(r, []func(float64) string{…})` | 06, 07 |
 | `rightPipe(r, f, g…)` | `RightThen[T, U](r Either[T], f func(T) Either[U]) Either[U]`, à **deux** arguments (Go n'a pas de génériques variadiques) | `RightThen(RightThen(r, f), g)` : appels emboîtés | 07, 08 |
-| `group([…])` | `Group[T](rs []Either[T]) Either2[[]T, T]`, qui s'arrête au premier `left` | `Group(calculations)` | 09 |
+| `group([...])` | termine : handler et helper Go generique ajoutes | `Group[T](rs)`, renvoie EitherAny avec le premier echec ou []T | 09 |
 | types `Fail`, `Left<…>`, unions | — | `Either[T]` ou `Either2[R, L]` selon la règle de D-09.2 (étape 3) | 01, 04, 09 |
 
 **Conseil** : écrire et tester chaque helper dans un petit programme Go à part (`go run`) **avant** d'écrire le handler qui génère son appel.
 
 **Attention** : les formes **sans données** (`DEither.whenIsRight(fn)`, utilisée dans un `pipe` ou un `map`) se traduisent avec l'étape 8. Le `pipe` fournit la donnée.
 
-**Fini quand** : les projets 01, 02, 04, 06 et 07 n'échouent plus sur une fonction `DEither`.
+**Fini** : les handlers Either sont presents, y compris `group`. Validation des projets dependants apres les transformers de letape 6.
 
 ---
 
