@@ -448,11 +448,24 @@ Chaque fonction devient un **helper Go générique écrit une fois à la main** 
 
 ## Étape 10 — Projet 10 (asynchrone)
 
+> ✅ **Faite** : `async` et `await` sont effacés, `rightAsyncPipe` réutilise la
+> propagation de `rightPipe`, `asyncPipe` est déroulé comme `pipe`, et
+> `asyncGroup` exécute ses fonctions séquentiellement en s'arrêtant au premier
+> `Left`. `tests/async/` couvre 20 comportements et `check.sh 10` passe avec une
+> sortie identique à TypeScript.
+>
 **But** : traduire `async` / `await` / `Promise`, `rightAsyncPipe`, `asyncGroup` et `asyncPipe`.
 
 **Approche choisie (D-11)** : exécution **synchrone**. `async` et `await` disparaissent, `Promise<T>` devient `T`, et les fonctions `async*` se traduisent comme leurs versions synchrones (étapes 7 et 8). Il n'y a pas de vraie entrée/sortie, donc la sortie reste identique.
 
-**Déjà fait** : le type `Promise<T>` → `T` (`tsTypeToGo`, D-18.3). **Reste** : les mots-clés `async` / `await`, et les handlers `rightAsyncPipe`, `asyncGroup`, `asyncPipe` (le build du projet 10 s'arrête aujourd'hui sur `rightAsyncPipe`).
+**Implémentation** : le type `Promise<T>` devient `T` dans `tsTypeToGo` (D-18.3),
+le transformer `await` conserve seulement son expression, et les trois fonctions
+DuploJS possèdent des handlers dédiés. Le helper Go `AsyncGroup[E, T]` reçoit une
+slice de getters ou de valeurs `Either`, conserve l'ordre, ouvre les valeurs avec
+le type fourni par le checker et renvoie immédiatement le premier `Left`. Les
+littéraux, les tableaux stockés homogènes ou mixtes et les objets littéraux sont
+gérés. Pour un objet, un second helper générique conserve les clés dans un struct
+Go typé et applique un assignateur propre à chaque champ.
 
 **Bonus, si on a le temps** : des goroutines et un `sync.WaitGroup` pour `asyncGroup`, avec un benchmark à l'appui.
 

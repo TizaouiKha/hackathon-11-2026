@@ -20,7 +20,7 @@ Les décisions transverses sont dans [DECISIONS.md](DECISIONS.md) (références 
 | [07](#projet-07) | `rightPipe` | ✅ |
 | [08](#projet-08) | Tuples, déstructuration, `map` imbriqués | ✅ |
 | [09](#projet-09) | `group` (transaction) | ✅ |
-| [10](#projet-10) | `async` / `await`, `rightAsyncPipe`, `asyncGroup`, `asyncPipe` | ⬜ |
+| [10](#projet-10) | `async` / `await`, `rightAsyncPipe`, `asyncGroup`, `asyncPipe` | ✅ |
 
 **Valider un projet** (sous WSL, voir D-01 et D-14) :
 ```bash
@@ -765,10 +765,31 @@ func init() {
 
 **Problèmes posés** : composer des résultats asynchrones ; représenter `Promise` / `await` en Go.
 
-**Réponse prévue** :
+**Réponse** :
 - exécution synchrone (D-11) : `async` et `await` disparaissent, et `Promise<T>` devient `T` ;
-- `asyncGroup` exécute les thunks dans l'ordre (à vérifier : la lib DuploJS les lance-t-elle en parallèle ? Comme aucun effet de bord n'est observable, le résultat reste le même).
+- `rightAsyncPipe` devient une chaîne de `RightThen` comme `rightPipe` ;
+- `asyncGroup` exécute les thunks dans l'ordre et s'arrête au premier `Left`, comme l'implémentation DuploJS ;
+- `asyncPipe` est déroulé en appels successifs comme `pipe`.
 
-**Go visé** : _à remplir_
+**Go obtenu**, sous forme simplifiée :
+```go
+func Sourced_calculate(one, two, divisor float64) shard_dependencies.EitherAny {
+	return shard_dependencies.RightThen(
+		shard_dependencies.RightThen(add(one, two), func(value float64) shard_dependencies.EitherAny {
+			return divide(value, divisor)
+		}),
+		func(value float64) shard_dependencies.EitherAny {
+			return shard_dependencies.EitherAny{Tag: shard_dependencies.TagRightSuccess, Value: value * 2}
+		},
+	)
+}
 
-**État** : ⬜
+calculations = shard_dependencies.AsyncGroup[func() EitherAny, float64](
+    getters,
+    func(getter func() EitherAny) EitherAny { return getter() },
+    shard_dependencies.TagRightSuccess,
+)
+```
+
+**État** : ✅ `./.commands/check.sh 10` passe, avec une sortie identique :
+`[ 'transaction annulée' ]`.
