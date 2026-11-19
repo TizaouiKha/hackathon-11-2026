@@ -435,7 +435,7 @@ Elles suivent les règles d'ECMAScript : `ToIntegerOrInfinity` (`NaN` donne 0, t
 3. **Perf** : une sous-chaîne non ASCII ne copie plus rien. On cherche les octets de début et de fin, puis `value[start:end]` partage la mémoire. La copie avec `U+FFFD` n'a lieu que si une paire UTF-16 est coupée (`jsStringSplitUnits`).
 4. La recherche de la spec utilise `Object.hasOwn`, pour qu'un nom comme `toString` ne trouve pas `Object.prototype`.
 5. **Trouvé en ajoutant les tests manquants** : `DString.toUpperCase` passé comme fonction a un type générique (`<S extends string>(s: S) => ToUpperCaseOutput<S>`) que `tsTypeToGo` refusait. Un type non résolu (paramètre de type, type conditionnel) est maintenant traduit par **sa contrainte**, calculée par TypeScript (`getBaseConstraintOfType` : `S extends string` donne `string`) ; sans contrainte, il donne `any`.
-6. **Tests** : formes curryfiées des 11 fonctions (`charAt`, `at`, `indexOf`, `startsWith` et `endsWith` ajoutées), `toUpperCase` / `toLowerCase` passées en valeur, et régression du bug 1. Au total, **6 438 cas**.
+6. **Tests** : formes curryfiées des 8 fonctions qui en ont une (`charAt`, `at`, `indexOf`, `startsWith` et `endsWith` ajoutées), `toUpperCase` / `toLowerCase` passées en valeur, et régression du bug 1. Au total, **6 438 cas**.
 
 **Limites.**
 - Une moitié de paire **recollée** (`slice` puis concaténation) ne redonne pas l'emoji : Go a déjà remplacé chaque moitié par `U+FFFD`. Une chaîne JS mal formée n'a pas de représentation UTF-8.
