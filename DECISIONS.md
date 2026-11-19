@@ -683,6 +683,25 @@ struct{ Sourced_name string; Sourced_email string }{Sourced_name: Sourced_user.S
 
 **Vérifié** : `tests/dobject/` (15 cas comparés à Node, dont les 2 écarts d'ordre vérifiés tels quels), plus toute la suite.
 
+### D-25 · Fonctions `DNumber` — ✅ (19/11/2026, branche `dnumber`)
+
+**Toutes les fonctions** du domaine `@duplojs/lang/number` (22 sur 22) ont un helper Go (`duplojs/number/sharedDependency.ts`) :
+
+| Groupe | Fonctions | Go |
+|---|---|---|
+| comparaisons | `greaterThan`, `greaterThanOrEqual`, `lessThan`, `lessThanOrEqual`, `betweenThan`, `betweenThanOrEqual` | `value > threshold`… |
+| tests | `isEven`, `isOdd`, `isMultipleOf` | `math.Mod` (le `%` de JS, même signe) |
+| | `isInteger` | fini et `math.Trunc(v) == v` |
+| | `isSafe` | strictement entre `±9007199254740991` |
+| | `isNegative`, `isPositive`, `isStrictNegative`, `isStrictPositive`, `isNotZero` | comparaison à `0` |
+| listes | `sum`, `maxOf`, `minOf` | la boucle de DuploJS |
+| | `max`, `min` | `Math.max(...v)` : `NaN` contagieux, `-Infinity` si vide, `+0 > -0` |
+| | `sort(list, "ASC" \| "DSC")` | copie triée, stable (`sort.SliceStable`) |
+
+**Pourquoi un helper par fonction** : en Duplo, on passe souvent ces fonctions **en valeur** (`DArray.filter(list, DNumber.isEven)`). `DNumber.isEven` devient alors simplement `shard_dependencies.NumberIsEven`, une fonction Go `func(float64) bool`. La forme curryfiée (`DNumber.greaterThan(2)`) devient une fonction littérale, avec le seuil évalué une seule fois.
+
+**Vérifié** : `tests/dnumber/` (39 valeurs comparées à Node, dont `NaN`, `Infinity`, `-0`, nombres négatifs, `2^53`, tableau vide, `filter` avec `DNumber.isEven` et `DNumber.greaterThan(2)`), plus toute la suite.
+
 ### D-11 · Asynchrone (projet 10) — 🟡
 - Il n'y a aucune vraie entrée/sortie, donc une **exécution synchrone** (`Promise<T>` traduit en `T`) préserve l'ordre et le résultat.
 - Goroutines et channels seulement en bonus, si on a le temps.

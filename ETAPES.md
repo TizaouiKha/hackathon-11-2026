@@ -26,7 +26,7 @@ Chaque étape indique : **le but**, **ce qu'il faut avoir lu**, **ce qu'il faut 
 | 9 | [Valider les projets 01 → 09](#étape-9--valider-les-projets-01--09) | 6, 7, 8 | tout le monde | ✅ les 10 projets (00 à 09) passent |
 | 10 | [Projet 10 (asynchrone)](#étape-10--projet-10-asynchrone) | 9 | *(à remplir)* | 🟨 en cours |
 | 11 | [Performance et finitions](#étape-11--performance-et-finitions) | 9 | | ⬜ |
-| 12 | [Couvrir le TypeScript courant](#étape-12--couvrir-le-typescript-courant-au-delà-des-exercices) | 6 | Claude | 🟨 D-19 à D-22 et R-01 n° 2 faits ; suite : `DNumber`, `DCommon`, autres `DArray`, puis `Record` |
+| 12 | [Couvrir le TypeScript courant](#étape-12--couvrir-le-typescript-courant-au-delà-des-exercices) | 6 | Claude | 🟨 D-19 à D-22 et R-01 n° 2 faits ; suite : `DCommon`, autres `DArray`, puis `Record` |
 
 ```
 3 (Either) ──┐
@@ -504,7 +504,8 @@ Go typé et applique un assignateur propre à chaque champ.
 | **R-01 n° 2** | **ordre d'évaluation** : `f(x, change())`, `x + change()`, `[x, change()]`, `{ a: x, b: change() }` lisent `x` avant `change()`, comme JS | ✅ (PR #22) |
 | **D-22** | **fonctions `DArray`** : `filter`, `find`, `findIndex`, `some`, `every`, `includes`, `push`, `concat`, `length` (avec données et curryfiées) | ✅ (PR #23) |
 | **D-23** | **`DArray.reduce`** avec `next`, `exit`, `nextPush`, et `DArray.reduceFrom` (avec données et curryfiée) | ✅ (PR #24) |
-| **D-24** | **fonctions `DObject`** : `pick`, `omit`, `assign`, `override`, `getProperty`, `getDeepProperty`, `transformProperty`, `keys`, `values`, `entries`, `countKeys` | ✅ (branche `dobject`) |
+| **D-24** | **fonctions `DObject`** : `pick`, `omit`, `assign`, `override`, `getProperty`, `getDeepProperty`, `transformProperty`, `keys`, `values`, `entries`, `countKeys` | ✅ (PR #25) |
+| **D-25** | **fonctions `DNumber`** : comparaisons, `betweenThan*`, `isEven` / `isOdd` / `isInteger` / `isSafe`…, `sum`, `max` / `min`, `maxOf` / `minOf`, `sort` (22 sur 22) | ✅ (branche `dnumber`) |
 
 **D-21 en détail** (voir `DECISIONS.md` et `docs/objets-sous-types-et-any.md`) : `expression/structuralConversion.ts` construit l'objet attendu champ par champ (récursif, tableaux d'objets, champ facultatif → `undefined`, source évaluée une fois). Test : `tests/structural-objects/`. Différence assumée : un objet renvoyé sous le type plus petit n'affiche que les champs de ce type.
 
@@ -513,7 +514,7 @@ Go typé et applique un assignateur propre à chaque champ.
 | Construction | Piste |
 |---|---|
 | `DArray.flatMap`, `sort`, `slice`, `reverse`, `group`… ; `nextWithObject` de `reduce` | même modèle que D-22 / D-23 |
-| `DObject.to`, `transformProperties`, `fromEntries`, `hasKeys`, `deepOverride`, `discriminate*` ; `DNumber.*`, `DCommon.*` hors `pipe` / `print` | même modèle que D-24 : construire le résultat à partir du type |
+| `DObject.to`, `transformProperties`, `fromEntries`, `hasKeys`, `deepOverride`, `discriminate*` ; `DCommon.*` hors `pipe` / `print` | même modèle que D-24 : construire le résultat à partir du type |
 | `print` d'un tableau de plus de 6 nombres | Node les regroupe sur plusieurs lignes (`groupArrayElements` de `util.inspect`) ; notre `Inspect` les met sur une ligne |
 | `Number.NaN`, `Number.MAX_SAFE_INTEGER`… | refusés aujourd'hui (`overloaded-or-callable-object-not-supported-yet`) |
 

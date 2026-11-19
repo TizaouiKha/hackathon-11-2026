@@ -83,6 +83,7 @@ Objet Fail (projet 04) :
 - ✔ **objet plus grand passé à un type plus petit** (`test(user)` avec `test(arg: { name: string })`) : objet temporaire construit à la compilation, y compris imbriqué et tableau d'objets (D-21)
 - ✔ **`DArray`** : `map`, `coalescing`, `filter`, `find`, `findIndex`, `some`, `every`, `includes`, `push`, `concat`, `length`, avec données et curryfiées (D-22) · `reduce` avec `next` / `exit` / `nextPush`, `reduceFrom` (D-23)
 - ✔ **`DObject`** : `pick`, `omit`, `assign`, `override`, `getProperty`, `getDeepProperty`, `transformProperty`, `keys`, `values`, `entries`, `countKeys` (D-24)
+- ✔ **`DNumber`** : les 22 fonctions, avec données, curryfiées et passées en valeur (`DArray.filter(list, DNumber.isEven)`) (D-25)
 - ⬜ `?.` · ⬜ `await` (projet 10)
 
 **Types**
