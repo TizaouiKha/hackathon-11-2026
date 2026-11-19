@@ -321,6 +321,44 @@ Plutôt que de produire un programme **faux sans le dire**, le transpileur s'arr
 
 ---
 
+## 9 bis. Et si l'objet est un `any` ?
+
+> Détail, et le cas voisin « passer un `User` à une fonction qui attend `{ name }` » : voir [`objets-sous-types-et-any.md`](objets-sous-types-et-any.md).
+
+Une question qu'on peut nous poser : « Et si une fonction renvoie un `User`, mais construit sans l'interface, dans un `any` ? »
+
+```ts
+function untypedUser(): User {
+	const raw: any = { age: 36, name: "ada" }; // pas d'interface, ordre différent
+
+	return raw; // TypeScript fait confiance au any : aucune vérification
+}
+```
+
+**Le problème** : en Go, `raw` a la forme `{ age, name }`, alors qu'un `User` a la forme `{ name, age }`. Ce sont deux structs **différents** pour Go.
+
+**La solution : `JSAs`**, un helper qui **recopie champ par champ, en cherchant chaque champ par son nom TS** (le tag `json`), quel que soit l'ordre :
+
+```go
+return shard_dependencies.JSAs[User](raw) // { name: 'ada', age: 36 }
+```
+
+Si `raw` a déjà exactement la forme `User`, `JSAs` le renvoie tel quel, sans rien copier.
+
+Et pour lire directement `raw.name` sur un `any`, `JSGetProperty` cherche le champ par son nom pendant l'exécution, comme JavaScript (`undefined` s'il n'existe pas).
+
+**Ce qu'on ne peut pas imiter**, parce qu'un struct a une forme fixe :
+
+| L'objet `any` contient… | JavaScript | Notre Go |
+|---|---|---|
+| les bons champs, dans un autre ordre | gardé tel quel | ✅ converti (affiché dans l'ordre de `User`) |
+| un champ **en trop** (`admin: true`) | gardé | perdu : `User` n'a pas de case pour lui |
+| un champ du **mauvais type** (`age: "36"`) | gardé, le bug passe inaperçu | **arrêt clair** : `JSAs : valeur.age est un string, float64 attendu` |
+
+**À dire à l'oral** : « TypeScript fait confiance au `any` ; Go, lui, doit savoir ce qu'il range. On convertit quand c'est possible, et quand l'objet ment sur son type, on s'arrête avec un message clair plutôt que de continuer avec une valeur fausse. »
+
+---
+
 ## 10. À retenir (pour la présentation)
 
 1. **TypeScript connaît la forme de chaque objet** : on s'en sert pour fabriquer un **struct Go** avant l'exécution.

@@ -12,6 +12,7 @@ import {
 	eitherFieldIdentifiers,
 } from "../duplojs/either/core/sharedDependency";
 import { registerEitherTag, valueInformation } from "../duplojs/either/core/tag";
+import { asTyped, needsConversion } from "./javascriptObjects";
 
 /**
  * Adaptation des expressions aux points de narrowing (D-18, phase 2).
@@ -178,8 +179,14 @@ export async function adaptExpression(
 	if (produced.kind === "any") {
 		const goType = await concreteGoType(target.type, node, context);
 
-		return DEither.isLeft(goType)
-			? undefined
+		if (DEither.isLeft(goType)) {
+			return undefined;
+		}
+
+		// Un objet ou un tableau `any` utilisé comme `User` : recopié champ par champ
+		// (par nom, quel que soit l'ordre), car son struct Go peut être différent (D-20).
+		return needsConversion(GoPrinter.renderNode(goType))
+			? asTyped(context, expression, goType)
 			: assertTo(expression, goType);
 	}
 

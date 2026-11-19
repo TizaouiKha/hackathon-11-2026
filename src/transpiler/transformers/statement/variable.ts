@@ -1,7 +1,7 @@
 import * as DArray from "@duplojs/lang/array";
 import * as DCommon from "@duplojs/lang/common";
 import * as DEither from "@duplojs/lang/either";
-import { GoAST } from "@go";
+import { GoAST, GoPrinter } from "@go";
 import { createTransformer, type Transformer } from "@transformer";
 import { TsAST } from "@typescript";
 import { expressionTransformers } from "../expression";
@@ -78,12 +78,31 @@ export const variableStatementTransformer: Transformer<VariableResult> = createT
 
 		const identifier = context.createSourceIdentifier(declaration.name.text);
 		if (!TsAST.isSourceFile(node.parent)) {
+			// Le type écrit en TS (`const raw: any = {…}`) fait foi : avec `raw := …`, Go
+			// donnerait à la variable le type de la valeur, et l'adaptateur se tromperait
+			// ensuite sur ce qu'elle contient (D-20).
+			const declaredType = await tsTypeOfNodeToGo(declaration.name, context);
+			if (DEither.isLeft(declaredType)) {
+				return declaredType;
+			}
+
+			const valueType = await tsTypeOfNodeToGo(declaration.initializer, context);
+			const declaredRendered = GoPrinter.renderNode(DEither.unwrapRight(declaredType));
+			const sameType = DEither.isRight(valueType)
+				&& GoPrinter.renderNode(DEither.unwrapRight(valueType)) === declaredRendered;
+
 			return context.success({
 				before: DArray.concat(initializer.before, [
-					GoAST.createShortVariableDeclarationStatement({
-						identifier,
-						initializer: initializer.result,
-					}),
+					sameType
+						? GoAST.createShortVariableDeclarationStatement({
+							identifier,
+							initializer: initializer.result,
+						})
+						: GoAST.createVariableDeclarationInitialized({
+							identifier,
+							typeReference: DEither.unwrapRight(declaredType),
+							initializer: initializer.result,
+						}),
 				]),
 				result: GoAST.createAssignmentStatement({
 					targets: DCommon.cast([GoAST.createIdentifier("_")]),

@@ -757,6 +757,19 @@ function inspectStructFunction() {
 						),
 						GoAST.createContinueStatement({}),
 					),
+					// Champ facultatif absent (`nickname?: string`, un `any` resté à
+					// `undefined`) : Node n'affiche pas la clé (D-20).
+					ifStatement(
+						binary(
+							call(selector(identifier("field"), "Interface"), []),
+							"==",
+							GoAST.createStructLiteral({
+								typeReference: identifier("JSUndefined"),
+								elements: [],
+							}),
+						),
+						GoAST.createContinueStatement({}),
+					),
 					shortDeclaration(
 						"fieldType",
 						call(fieldType, [index]),

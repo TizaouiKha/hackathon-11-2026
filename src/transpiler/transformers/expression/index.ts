@@ -9,6 +9,7 @@ import { binaryExpressionTransformer } from "./binary";
 import { nullishLiteralTransformer } from "./nullish";
 import { createAdaptedExpressionTransformer } from "./adapt";
 import { stringLiteralTransformer } from "./stringLiteral";
+import { booleanLiteralTransformer } from "./booleanLiteral";
 import { unaryExpressionTransformer } from "./unary";
 import { parenthesizedExpressionTransformer } from "./parenthesized";
 import { conditionalExpressionTransformer } from "./conditional";
@@ -29,6 +30,7 @@ export const rawExpressionTransformers = DCommon.memo(
 		identifierTransformer,
 		numericLiteralTransformer,
 		stringLiteralTransformer,
+		booleanLiteralTransformer,
 		parenthesizedExpressionTransformer,
 		unaryExpressionTransformer,
 		conditionalExpressionTransformer,
