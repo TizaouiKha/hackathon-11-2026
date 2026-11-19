@@ -478,6 +478,14 @@ Non couvert : les `Map` JavaScript (`new Map()`) donnent une erreur claire (`rec
 
 **Limites** : le second paramètre `{ index, self }` n'est lisible qu'avec l'accès aux propriétés et la déstructuration de l'étape 6. Les projets 02 à 09 restent bloqués par `const` (étape 6), mais n'attendent plus `DArray`.
 
+#### D-18.6 · Déclarations `type` et `interface` — ✅ (19/11/2026, branche `etapes-revision`)
+
+`type X = …` et `interface X { … }` (exportées ou non) **ne produisent rien en Go**. Elles sont sautées dans `transformSourceFile.ts`, comme les `import` (`declaration/typeOnly.ts`). C'est sans perte : le checker résout ces noms partout où ils servent (`tsTypeToGo`), et un objet devient un struct anonyme qui n'a pas besoin de nom.
+
+**Vérifié** : `tests/type-declarations/` (alias de primitif, union d'Either, `interface` imbriquée, tableau d'`interface` passé à `map`, alias de tuple, affichage avec les noms TS).
+
+**Limite** : une déclaration de type écrite **dans** une fonction n'est pas encore sautée. Il faut le faire dans `statement/block.ts`, que l'étape 6 est en train de modifier.
+
 ### D-11 · Asynchrone (projet 10) — 🟡
 - Il n'y a aucune vraie entrée/sortie, donc une **exécution synchrone** (`Promise<T>` traduit en `T`) préserve l'ordre et le résultat.
 - Goroutines et channels seulement en bonus, si on a le temps.
