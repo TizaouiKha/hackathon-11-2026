@@ -17,7 +17,7 @@ Les décisions transverses sont dans [DECISIONS.md](DECISIONS.md) (références 
 | [07](#projet-07) | `rightPipe` | ⬜ |
 | [08](#projet-08) | Tuples, déstructuration, `map` imbriqués | ⬜ |
 | [09](#projet-09) | `group` (transaction) | ⬜ |
-| [10](#projet-10) | `async` / `await`, `rightAsyncPipe`, `asyncGroup`, `asyncPipe` | ⬜ |
+| [10](#projet-10) | `async` / `await`, `rightAsyncPipe`, `asyncGroup`, `asyncPipe` | ✅ |
 
 **Valider un projet** (sous WSL, voir D-01 et D-14) :
 ```bash
@@ -73,7 +73,7 @@ Objet Fail (projet 04) :
 
 **Expressions**
 - ✔ identifiant (y compris entre fichiers) · ✔ littéral numérique → `float64` · ✔ binaire arithmétique
-- ✔ comparaisons, `||`, `&&` · ✔ littéral de chaîne · ✔ unaires · ✔ parenthèses · ✔ ternaire · ✔ fonction fléchée · ✔ littéral de tableau/tuple · littéral d'objet (handlers de `matchInformation`) · `await`
+- ✔ comparaisons, `||`, `&&` · ✔ littéral de chaîne · ✔ unaires · ✔ parenthèses · ✔ ternaire · ✔ fonction fléchée · ✔ littéral de tableau/tuple · littéral d'objet (handlers de `matchInformation`) · ✔ `await`
 
 **Types**
 - ✔ `number`
@@ -91,9 +91,9 @@ par `DArray.map` ou `DArray.coalescing` (étape 8).
 **Domaine DuploJS**
 - Either :
   - ✔ `success` / `Success<T>` (bug B-01) ;
-  - `fail` · `left` · `isRight` · `whenIsRight` · `whenIsRightOtherwise` · `matchInformation` · `rightPipe` · `group` · `rightAsyncPipe` · `asyncGroup` ;
+  - `fail` · `left` · `isRight` · `whenIsRight` · `whenIsRightOtherwise` · `matchInformation` · `rightPipe` · `group` · ✔ `rightAsyncPipe` · ✔ `asyncGroup` ;
   - types `Fail`, `Left`.
-- Common : `pipe` · `asyncPipe` · `print`
+- Common : `pipe` · ✔ `asyncPipe` · `print`
 - Array : `coalescing` · `map`
 - String : `to`
 
@@ -290,10 +290,31 @@ puis le `if` appelle la méthode de test du tag et le printer partagé.
 
 **Problèmes posés** : composer des résultats asynchrones ; représenter `Promise` / `await` en Go.
 
-**Réponse prévue** :
+**Réponse** :
 - exécution synchrone (D-11) : `async` et `await` disparaissent, et `Promise<T>` devient `T` ;
-- `asyncGroup` exécute les thunks dans l'ordre (à vérifier : la lib DuploJS les lance-t-elle en parallèle ? Comme aucun effet de bord n'est observable, le résultat reste le même).
+- `rightAsyncPipe` devient une chaîne de `RightThen` comme `rightPipe` ;
+- `asyncGroup` exécute les thunks dans l'ordre et s'arrête au premier `Left`, comme l'implémentation DuploJS ;
+- `asyncPipe` est déroulé en appels successifs comme `pipe`.
 
-**Go visé** : _à remplir_
+**Go obtenu**, sous forme simplifiée :
+```go
+func Sourced_calculate(one, two, divisor float64) shard_dependencies.EitherAny {
+	return shard_dependencies.RightThen(
+		shard_dependencies.RightThen(add(one, two), func(value float64) shard_dependencies.EitherAny {
+			return divide(value, divisor)
+		}),
+		func(value float64) shard_dependencies.EitherAny {
+			return shard_dependencies.EitherAny{Tag: shard_dependencies.TagRightSuccess, Value: value * 2}
+		},
+	)
+}
 
-**État** : ⬜
+calculations = shard_dependencies.AsyncGroup[func() EitherAny, float64](
+    getters,
+    func(getter func() EitherAny) EitherAny { return getter() },
+    shard_dependencies.TagRightSuccess,
+)
+```
+
+**État** : ✅ `./.commands/check.sh 10` passe, avec une sortie identique :
+`[ 'transaction annulée' ]`.

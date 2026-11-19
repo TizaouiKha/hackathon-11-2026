@@ -15,6 +15,8 @@ import { whenIsRightOtherwiseExpressionHandler } from "./whenIsRightOtherwise";
 import { matchInformationExpressionHandler } from "./matchInformation";
 import { rightPipeExpressionHandler } from "./rightPipe";
 import { whenIsRightExpressionHandler } from "./whenIsRight";
+import { rightAsyncPipeExpressionHandler } from "./rightAsyncPipe";
+import { asyncGroupExpressionHandler } from "./asyncGroup";
 
 export const duploJSEitherDeclarationTransformer: Transformer<GoAST.Declaration> = createTransformer(
 	(_node, context) => context.notSupport(),
@@ -91,6 +93,14 @@ export const duploJSEitherExpressionTransformer: Transformer<GoAST.Expression> =
 			DPattern.match(
 				DCommon.equal("rightPipe"),
 				() => rightPipeExpressionHandler(node, context),
+			),
+			DPattern.match(
+				DCommon.equal("rightAsyncPipe"),
+				() => rightAsyncPipeExpressionHandler(node, context),
+			),
+			DPattern.match(
+				DCommon.equal("asyncGroup"),
+				() => asyncGroupExpressionHandler(node, context),
 			),
 			DPattern.otherwise(
 				() => context.error(node),

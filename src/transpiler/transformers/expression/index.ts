@@ -14,6 +14,7 @@ import { parenthesizedExpressionTransformer } from "./parenthesized";
 import { conditionalExpressionTransformer } from "./conditional";
 import { arrowFunctionTransformer } from "./function";
 import { arrayLiteralExpressionTransformer } from "./arrayLiteral";
+import { awaitExpressionTransformer } from "./await";
 
 /** Transformeurs bruts : chacun produit le Go du type TS de son expression. */
 export const rawExpressionTransformers = DCommon.memo(
@@ -29,6 +30,7 @@ export const rawExpressionTransformers = DCommon.memo(
 		conditionalExpressionTransformer,
 		arrowFunctionTransformer,
 		arrayLiteralExpressionTransformer,
+		awaitExpressionTransformer,
 		binaryExpressionTransformer,
 	],
 );

@@ -9,7 +9,7 @@ import { SignatureKind } from "typescript/async";
 import { type BuildContext } from "../../../../context/build";
 import { expressionTransformers } from "../../../expression";
 import { tsTypeToGo } from "../../../type/tsTypeToGo";
-import { analyzeEitherOfNode, eitherAnyGoType } from "../core/analysis";
+import { eitherAnyGoType } from "../core/analysis";
 import { inferParameter, transformCallback } from "../core/callback";
 import { readEitherIssues } from "../core/issues";
 import { eitherAnyTypeIdentifier, eitherCoreDependency, eitherFieldIdentifiers } from "../core/sharedDependency";
@@ -30,7 +30,9 @@ async function readStep(step: TsAST.Expression, context: BuildContext) {
 		return context.error(step, "right-pipe-step-without-call-signature");
 	}
 
-	const returnsEither = await readEitherIssues(await signature.getReturnType(), step, context);
+	const returnType = await signature.getReturnType();
+	const awaitedReturnType = await typeChecker.getAwaitedType(returnType) ?? returnType;
+	const returnsEither = await readEitherIssues(awaitedReturnType, step, context);
 
 	if (DEither.isLeft(returnsEither) && !DEither.hasInformation(returnsEither, "none")) {
 		return returnsEither;
@@ -110,6 +112,7 @@ function wrapRawStep(
 export async function rightPipeExpressionHandler(
 	node: TsAST.Node,
 	context: BuildContext,
+	unwrapPromiseInput = false,
 ): Promise<ReturnType<Transformer<GoAST.Expression>["transformer"]>> {
 	if (!TsAST.isCallExpression(node) || node.arguments.length < 2) {
 		return context.error(node, "right-pipe-expects-an-input-and-steps");
@@ -117,10 +120,13 @@ export async function rightPipeExpressionHandler(
 
 	const [input, ...steps] = node.arguments as unknown as [TsAST.Expression, ...TsAST.Expression[]];
 
-	const shape = await DCommon.asyncPipe(analyzeEitherOfNode(input, context), DEither.unwrapRight);
-
-	if (DEither.isLeft(shape)) {
-		return shape;
+	const inputType = await context.transpilation.typeChecker.getTypeAtLocation(input);
+	const analyzedInputType = unwrapPromiseInput
+		? await context.transpilation.typeChecker.getAwaitedType(inputType) ?? inputType
+		: inputType;
+	const inputIssues = await readEitherIssues(analyzedInputType, input, context);
+	if (DEither.isLeft(inputIssues) && !DEither.hasInformation(inputIssues, "none")) {
+		return inputIssues;
 	}
 
 	const inputExpression = await DCommon.asyncPipe(
@@ -131,6 +137,24 @@ export async function rightPipeExpressionHandler(
 	if (DEither.isLeft(inputExpression)) {
 		return inputExpression;
 	}
+	const initialResult = DEither.isRight(inputIssues)
+		? inputExpression.result
+		: GoAST.createStructLiteral({
+			typeReference: GoAST.createPackageTypeReference({
+				packageName: context.registerSharedDependency(eitherCoreDependency.value),
+				identifier: eitherAnyTypeIdentifier,
+			}),
+			elements: [
+				GoAST.createKeyedElement({
+					key: eitherFieldIdentifiers.tag,
+					value: registerEitherTag(context, "right", "success"),
+				}),
+				GoAST.createKeyedElement({
+					key: eitherFieldIdentifiers.value,
+					value: inputExpression.result,
+				}),
+			],
+		});
 
 	const packageName = context.registerSharedDependency(rightThenDependency.value);
 
@@ -142,7 +166,7 @@ export async function rightPipeExpressionHandler(
 				result: GoAST.Expression;
 			}>({
 				before: inputExpression.before,
-				result: inputExpression.result,
+				result: initialResult,
 			}),
 			async({ item, lastValue, next, exit }) => {
 				const stepShape = await DCommon.asyncPipe(readStep(item, context), DEither.unwrapRight);

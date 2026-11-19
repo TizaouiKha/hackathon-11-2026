@@ -486,9 +486,30 @@ Non couvert : les `Map` JavaScript (`new Map()`) donnent une erreur claire (`rec
 
 **Limite** : une déclaration de type écrite **dans** une fonction n'est pas encore sautée. Il faut le faire dans `statement/block.ts`, que l'étape 6 est en train de modifier.
 
-### D-11 · Asynchrone (projet 10) — 🟡
+### D-11 · Asynchrone (projet 10) — ✅ (19/11/2026, branche `feat/step-10`)
 - Il n'y a aucune vraie entrée/sortie, donc une **exécution synchrone** (`Promise<T>` traduit en `T`) préserve l'ordre et le résultat.
 - Goroutines et channels seulement en bonus, si on a le temps.
+- `async` ne produit aucun élément particulier dans une déclaration de fonction Go ;
+  `await expression` devient simplement `expression`. L'expression interne est
+  transformée une seule fois, puis le résultat reste adapté au type attendu par
+  le parent (notamment l'assertion nécessaire après un `Promise<any>`).
+- `rightAsyncPipe` réutilise `RightThen` et déballe avec le checker les types
+  `Promise` de l'entrée et des callbacks.
+- `asyncPipe` est déroulé exactement comme `pipe`.
+- `asyncGroup` suit l'implémentation DuploJS observée : les getters sont exécutés
+  **séquentiellement**, le premier `Left` est retourné immédiatement, sinon leurs
+  valeurs forment un `Success<[]>`. Le helper partagé `AsyncGroup[E, T]` accepte
+  aussi bien des getters que des valeurs `Either` ; le handler fournit les deux
+  types depuis le checker. Les littéraux et les tableaux stockés sont couverts.
+- La forme objet littérale est traduite vers un struct Go typé. Le helper
+  `AsyncGroupObject[O]` reçoit des getters et des assignateurs de champs typés,
+  conserve les clés et court-circuite avant d'appeler les getters suivants.
+- Un tableau local stocké mélangeant getters et valeurs utilise une slice `[]any` ;
+  le handler connaît le littéral d'origine et restaure le type de chaque position.
+  Un tableau mixte opaque reçu depuis un autre module reste refusé, puisqu'il ne
+  fournit plus cette information statique et nécessiterait une réflexion runtime.
+- **Vérifié** : `tests/async/` (20 contrôles), compilation et `go vet`, et
+  `check.sh 10` (sortie identique à TypeScript).
 
 ### D-12 · Rendu des nombres en chaîne — ✅ (18/11/2026, branche `etape-8b-dstring-to`)
 - `DString.to(3)` doit donner `"3"` comme en JS, pas `"3.000000"`.

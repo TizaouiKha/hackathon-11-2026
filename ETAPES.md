@@ -124,7 +124,7 @@ tests/<nom>/
 - `pnpm test:runtime` lance tous les tests, et `./.commands/test-runtime.sh either` un seul.
 - Le script transpile le dossier, copie `check/` dans `dist/`, puis lance `go vet` et `go run ./check`.
 - `check/main.go` importe le package transpilé (par exemple `shapes "duplojs.local/transpiled/shapes.ts"`) et appelle les fonctions sous leur nom Go (`shapes.Sourced_maFonction(...)`). Il doit **sortir avec un code d'erreur** si un contrôle échoue (`os.Exit(1)`).
-- Exemple complet : `tests/either/` (étape 3). Liste actuelle (16 tests) : `arrays`, `composite-types`, `dstring-to`, `either`, `either-helpers`, `js-number-to-string`, `js-operators`, `language-basics`, `maps-advanced`, `narrowing`, `pipe`, `preparation`, `print`, `strings`, `ts-types`, `type-declarations`.
+- Exemple complet : `tests/either/` (étape 3). Liste actuelle (17 tests) : `arrays`, `async`, `composite-types`, `dstring-to`, `either`, `either-helpers`, `js-number-to-string`, `js-operators`, `language-basics`, `maps-advanced`, `narrowing`, `pipe`, `preparation`, `print`, `strings`, `ts-types`, `type-declarations`.
 - **Valeurs attendues** : calcule-les en exécutant **le même TypeScript avec `tsx`**, ne les écris pas de tête. Pour beaucoup de cas, génère `check/cases.go` depuis Node (exemple : `tests/strings/generate.ts`, 6 438 cas). Pour un affichage, compare `shard.Inspect(x)` à `util.inspect(x)` de Node (exemple : `tests/maps-advanced/`).
 - **Piège** : dans `check/main.go`, une constante Go rangée dans un `any` garde son type par défaut (`Value: 2` est un `int`). Le Go transpilé lit un `float64` : écris `float64(2)`.
 - **Variante « générateur »** : si le dossier contient un `check.ts` (et pas de `check/main.go`), le script le lance seul avec `tsx`. Il génère et exécute lui-même son Go, ce qui permet de tester une **shared dependency** sans TypeScript à transpiler. Exemple : `tests/js-number-to-string/` imprime le helper Go tel que le transpileur le génère, puis le compare à `String(x)` de Node sur 2 034 nombres.
@@ -298,7 +298,8 @@ Les règles à reproduire :
 
 **À lire avant** : étape 5 terminée, **l'étape 3b** (`tsTypeToGo`, l'adaptateur, `transformCallback`), et la section « Inventaire des transformers » de `EXERCICES.md`.
 
-**État mesuré** (19/11, après la PR #14) : `check.sh` passe pour les projets **00 à 08**. Le 09 attend `DEither.group` (étape 7), le 10 l'asynchrone (`rightAsyncPipe`, étapes 7 et 10).
+**État mesuré** (19/11, après l'étape 10) : `check.sh` passe pour les projets
+**00 à 08 et 10**. Le 09 attend encore `DEither.group` (étape 7).
 
 **À faire** : un transformer par ligne, à tester au fur et à mesure. **Les types Go viennent toujours de `tsTypeToGo`**, jamais d'une règle écrite dans ton transformer.
 
@@ -344,7 +345,7 @@ Les règles à reproduire :
 > | `whenIsRight(r, f)` | ✅ (D-16, `TagValue`) | `WhenIsRight[T, V](r, f) EitherAny` ; si `f` renvoie un Either : `RightThen` |
 > | formes sans données (`whenIsRight(fn)`, `whenIsRightOtherwise(f, g)`, `matchInformation({…})`) | ✅ (D-17) | une fonction Go littérale qui appelle le helper |
 > | **`group([…])`** | ⬜ **à faire** (projet 09) ; plus rien ne la bloque : un tableau d'Either est un `[]EitherAny` | par exemple `Group(rs []EitherAny) EitherAny` : `success` de la slice des valeurs, ou le premier `left` |
-> | `rightAsyncPipe`, `asyncGroup` | ⬜ projet 10 (étape 10) | comme leurs versions synchrones (D-11) |
+> | `rightAsyncPipe`, `asyncGroup` | ✅ projet 10 (étape 10) | versions synchrones et séquentielles (D-11) |
 >
 > - **Callbacks** (`either/core/callback.ts`) : un callback qui déclare moins de paramètres est enveloppé ; un `any` reçu est ouvert par assertion ; une fonction DuploJS générique passée en valeur est typée par le contexte, une fonction générique du projet par sa déclaration (D-18.5).
 > - **Vérifié** : `tests/either/`, `tests/either-helpers/`, `tests/narrowing/`, `tests/pipe/`, `tests/maps-advanced/` (les deux `map` du projet 08), `check.sh 00`, lint et types.
@@ -444,11 +445,24 @@ Chaque fonction devient un **helper Go générique écrit une fois à la main** 
 
 ## Étape 10 — Projet 10 (asynchrone)
 
+> ✅ **Faite** : `async` et `await` sont effacés, `rightAsyncPipe` réutilise la
+> propagation de `rightPipe`, `asyncPipe` est déroulé comme `pipe`, et
+> `asyncGroup` exécute ses fonctions séquentiellement en s'arrêtant au premier
+> `Left`. `tests/async/` couvre 20 comportements et `check.sh 10` passe avec une
+> sortie identique à TypeScript.
+>
 **But** : traduire `async` / `await` / `Promise`, `rightAsyncPipe`, `asyncGroup` et `asyncPipe`.
 
 **Approche choisie (D-11)** : exécution **synchrone**. `async` et `await` disparaissent, `Promise<T>` devient `T`, et les fonctions `async*` se traduisent comme leurs versions synchrones (étapes 7 et 8). Il n'y a pas de vraie entrée/sortie, donc la sortie reste identique.
 
-**Déjà fait** : le type `Promise<T>` → `T` (`tsTypeToGo`, D-18.3). **Reste** : les mots-clés `async` / `await`, et les handlers `rightAsyncPipe`, `asyncGroup`, `asyncPipe` (le build du projet 10 s'arrête aujourd'hui sur `rightAsyncPipe`).
+**Implémentation** : le type `Promise<T>` devient `T` dans `tsTypeToGo` (D-18.3),
+le transformer `await` conserve seulement son expression, et les trois fonctions
+DuploJS possèdent des handlers dédiés. Le helper Go `AsyncGroup[E, T]` reçoit une
+slice de getters ou de valeurs `Either`, conserve l'ordre, ouvre les valeurs avec
+le type fourni par le checker et renvoie immédiatement le premier `Left`. Les
+littéraux, les tableaux stockés homogènes ou mixtes et les objets littéraux sont
+gérés. Pour un objet, un second helper générique conserve les clés dans un struct
+Go typé et applique un assignateur propre à chaque champ.
 
 **Bonus, si on a le temps** : des goroutines et un `sync.WaitGroup` pour `asyncGroup`, avec un benchmark à l'appui.
 
