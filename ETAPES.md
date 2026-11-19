@@ -21,7 +21,7 @@ Chaque étape indique : **le but**, **ce qu'il faut avoir lu**, **ce qu'il faut 
 | 5 | [Helper de préparation](#étape-5--helper-de-préparation) | — | Yacine | ✅ |
 | 6 | [Transformers de base du langage](#étape-6--transformers-de-base-du-langage) | 5 | | ⬜ |
 | 7 | [Domaine Either (handlers)](#étape-7--domaine-either) | 3, 5 | Claude | 🟨 presque fini (branche `etape-7-either-helpers`) : il reste `group` (attend les types tableau, étape 6) |
-| 8 | [Domaines Common / Array / String](#étape-8--domaines-common--array--string) | 4, 5 | Claude | 🟨 8a fait (`pipe`, formes curryfiées) ; 8b : `DString.to` fait (branche `etape-8b-dstring-to`), `print`, `map` et `coalescing` attendent les étapes 4 et 6 |
+| 8 | [Domaines Common / Array / String](#étape-8--domaines-common--array--string) | 4, 5 | Claude | ✅ 8a (`pipe`, formes curryfiées), 8b (`DString.*`, `DArray.map`, `DArray.coalescing`, D-18.4 et D-18.5) ; `print` fait à l'étape 4 |
 | 9 | [Valider les projets 01 → 09](#étape-9--valider-les-projets-01--09) | 6, 7, 8 | tout le monde | ⬜ |
 | 10 | [Projet 10 (asynchrone)](#étape-10--projet-10-asynchrone) | 9 | | ⬜ |
 | 11 | [Performance et finitions](#étape-11--performance-et-finitions) | 9 | | ⬜ |
@@ -341,7 +341,7 @@ Chaque fonction devient un **helper Go générique écrit une fois à la main** 
 >
 >   Reste à vérifier quand le type `string` de l'étape 6 existera : une fonction qui **renvoie** le texte, et la forme passée à `map` ou `whenIsRightOtherwise`.
 > - ⬜ `DCommon.print` : brancher le `Inspect` de l'étape 4 ;
-> - ⬜ `DArray.map` et `DArray.coalescing` : ils ont besoin des types tableau (`number[]`) et des fonctions fléchées (étape 6). La forme curryfiée de `map` suivra le modèle de D-17 (`either/core/operand.ts`).
+> - ✅ `DArray.map` et `DArray.coalescing` (branche `etape-8b-darray`, D-18.5) : formes avec données, curryfiée et passée comme fonction ; `coalescing` décidé à la compilation d'après le type TS. Les tests passent les tableaux depuis Go en attendant les littéraux `[…]` de l'étape 6.
 
 **But** : traduire `pipe`, `print`, `DArray.map`, `DArray.coalescing` et `DString.to`.
 
@@ -356,9 +356,9 @@ Chaque fonction devient un **helper Go générique écrit une fois à la main** 
 |---|---|---|
 | `DCommon.print(x)` | `Print(x)` de l'étape 4 | 01+ |
 | `DCommon.pipe(x, f, g)` | `t1 := f(x)`, puis `t2 := g(t1)`, déroulé à la compilation | 03+ |
-| `DArray.map(xs, f)` | boucle `for range` sur un slice pré-alloué `make([]R, 0, len(xs))` | 05, 08 |
+| `DArray.map(xs, f)` | helper `Map[T, U]` : boucle `for range`, slice de sortie allouée une fois à sa taille (D-18.5) | 05, 08 |
 | `DArray.map(f)` (sans données, dans un pipe) | même chose, avec la donnée fournie par le pipe | 05, 08 |
-| `DArray.coalescing(x)` | `[]T{x}` si `x` n'est pas déjà un tableau (vérifier la source DuploJS) | 02+ |
+| `DArray.coalescing(x)` | décidé à la compilation : `x` si c'est un tableau, sinon `[]T{x}` (D-18.5) | 02+ |
 | `DString.to(n)` | formatage de nombre fidèle à JS | 05+ |
 
 **Fini quand** : les projets 02, 03, 05 et 08 n'échouent plus sur ces fonctions.

@@ -390,7 +390,7 @@ Passé comme fonction (`pipe(x, DEither.unwrapRight)`), il devient une fonction 
 | TypeScript | Go |
 |---|---|
 | `T[]`, `readonly T[]` | `[]T` |
-| tuple `[A, B]` | `[2]T` si les éléments ont un seul type Go, sinon `struct{ V0 A; V1 B }` |
+| tuple `[A, B]` | ~~`[2]T` ou `struct{ V0 A; V1 B }`~~ → `[]A` / `[]any` depuis D-18.5 |
 | objet `{ name: string }` | struct anonyme `struct{ Sourced_name string }` |
 | `Record<string, T>`, `{ [key: string]: T }` | `map[string]T` (`map[float64]T` pour une clé `number`) |
 | fonction `(a: A, ...rest: B[]) => R` | `func(A, ...B) R` ; `void` : pas de retour |
@@ -442,6 +442,41 @@ Elles suivent les règles d'ECMAScript : `ToIntegerOrInfinity` (`NaN` donne 0, t
 - Une moitié de paire **recollée** (`slice` puis concaténation) ne redonne pas l'emoji : Go a déjà remplacé chaque moitié par `U+FFFD`. Une chaîne JS mal formée n'a pas de représentation UTF-8.
 - Pas encore traduits : `split`, `replace`, `test` (les regex Go n'ont pas la même syntaxe), `padStart`… Ils seront ajoutés quand un projet en aura besoin, avec le même handler générique (`core/stringFunction.ts`).
 - Les littéraux de chaîne (`"abc"`) restent à l'étape 6 : les tests passent les chaînes depuis Go.
+
+#### D-18.5 · Tableaux pour `DArray` (étape 8b) — ✅ (19/11/2026, branche `etape-8b-darray`)
+
+`DArray.map` et `DArray.coalescing` ont imposé quatre changements à la couche de types. Ils sont partagés par tous les domaines.
+
+1. **Un tuple devient une slice** (modifie D-18.3) : `[A, A]` donne `[]A`, et `[A, B]` donne `[]any`. Ce n'est plus `[2]A` ni `struct{ V0 A; V1 B }`.
+   - **Pourquoi** : les projets 05 à 07 produisent `readonly [number] | readonly number[]` (`whenIsRightOtherwise(DArray.coalescing, () => [-12])`). Avec `[1]float64` et `[]float64`, cette union devenait `any`, et `DArray.map` ne pouvait plus être typé. Avec des slices, c'est un seul type, `[]float64`.
+   - C'est aussi **plus fidèle** : un tuple JS est passé par référence, comme une slice Go, alors qu'un `[N]T` Go est copié.
+   - Un tuple hétérogène devient `[]any`, lu par assertion comme `EitherAny` : TypeScript connaît le type de chaque position.
+2. **Intersection** : on garde le seul membre qui porte la valeur, **primitif ou tableau**. Avant, c'était seulement un primitif. `DArray.map` sur un tuple renvoie `readonly string[] & <contrainte de longueur>`.
+3. **Type non résolu** (`T`, conditionnel) : sa contrainte, mais seulement si elle est traduisible, sinon `any`. La contrainte est d'abord sondée avec un contexte qui n'enregistre aucune dépendance : un échec à mi-chemin laisserait un import Go inutilisé. Exemple : `coalescing<V extends AnyValue>`, où `AnyValue` est l'union de toutes les valeurs.
+4. **Callback générique passé en valeur** (`whenIsRightOtherwise(DArray.coalescing, …)`, `map(xs, DString.to)`) : `transformCallback` lit les **types** dans la signature instanciée attendue par le contexte, celle avec laquelle le Go est produit. Il garde le **nombre** de paramètres déclaré par la fonction : `map` fournit `(element, { index, self })` à `DString.to`, qui n'en déclare qu'un.
+
+**`DArray.map`** (`duplojs/array/map/`) : helper générique, avec une seule allocation (la slice de sortie, à sa taille finale).
+```go
+func Map[T any, U any](input []T, theFunction func(T, struct{ Sourced_index float64; Sourced_self []T }) U) []U
+```
+Le second paramètre est `MapTheFunctionParams` (`{ index, self }`), un struct anonyme passé par valeur. Ses champs portent les noms produits par `tsTypeToGo` (`Sourced_index`, `Sourced_self`) : Go ne considère deux structs anonymes identiques que si leurs champs le sont. Un callback qui déclare moins de paramètres est enveloppé. Forme avec données et forme curryfiée (dans un `pipe`).
+
+**`DArray.coalescing`** (`duplojs/array/coalescing/`) : le `instanceof Array` de DuploJS est **décidé à la compilation**, d'après le type TS.
+- tableau ou tuple : l'expression telle quelle, sans aucun coût à l'exécution ;
+- valeur : la slice `[]T{value}` ;
+- les deux (`number | number[]`, `unknown`) : erreur claire `coalescing-of-array-or-value-not-supported-yet`.
+
+Passé comme fonction, il devient une fonction Go littérale typée par le type attendu.
+
+**Vérifié** : `tests/arrays/` (14 contrôles, valeurs de Node) couvre `map` avec données, curryfiée, sur un tuple et avec `DString.to`, ainsi que `coalescing` sur une valeur, un tableau et un tuple. Il reproduit aussi les formes **exactes** du projet 02 (`whenIsRight(result, DArray.coalescing)`) et des projets 05 à 07 (`pipe` + `whenIsRightOtherwise(coalescing, …)` + `map(DString.to)`). Les 12 autres tests d'exécution, `check.sh 00`, les types et le lint passent aussi.
+
+**Cas compliqués** (`tests/maps-advanced/`, 9 cas). Chaque résultat est affiché avec `Inspect` (ce que fait `DCommon.print`) et comparé, caractère pour caractère, à `util.inspect` de Node : les deux `map` du projet 08 (helper Either curryfié comme callback, `rightPipe` dans le callback), un `map` qui produit des Either, des `map` imbriqués, un tableau d'objets, un callback générique et un tuple hétérogène. Deux bugs trouvés et corrigés :
+- un **callback générique du projet** (`identity<T>`, compilé en `func(any) any`) : `transformCallback` ne prend la signature instanciée que pour une fonction **DuploJS**, et le wrapper ouvre le `any` renvoyé par assertion ;
+- **affichage d'un objet** : `print` montrait `Sourced_name`. Les champs portent maintenant le tag `json:"<nom TS>"`, que `print` lit déjà. Le tag fait partie du type Go : le struct `{ index, self }` de `Map` porte donc les mêmes tags.
+
+Non couvert : les `Map` JavaScript (`new Map()`) donnent une erreur claire (`recursive-type-not-supported-yet`) et ne sont utilisés par aucun projet. Les déclarations `type X = …` / `interface X` font échouer la transpilation (aucun transformeur) : il faut les ignorer, puisque Go n'en a pas besoin.
+
+**Limites** : le second paramètre `{ index, self }` n'est lisible qu'avec l'accès aux propriétés et la déstructuration de l'étape 6. Les projets 02 à 09 restent bloqués par `const` (étape 6), mais n'attendent plus `DArray`.
 
 ### D-11 · Asynchrone (projet 10) — 🟡
 - Il n'y a aucune vraie entrée/sortie, donc une **exécution synchrone** (`Promise<T>` traduit en `T`) préserve l'ordre et le résultat.
