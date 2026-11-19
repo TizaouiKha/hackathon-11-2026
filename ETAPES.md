@@ -20,7 +20,7 @@ Chaque étape indique : **le but**, **ce qu'il faut avoir lu**, **ce qu'il faut 
 | 4 | [`print` fidèle à Node (`util.inspect`)](#étape-4--print-fidèle-à-node) | — | | ✅ |
 | 5 | [Helper de préparation](#étape-5--helper-de-préparation) | — | | ⬜ |
 | 6 | [Transformers de base du langage](#étape-6--transformers-de-base-du-langage) | 5 | | ⬜ |
-| 7 | [Domaine Either (handlers)](#étape-7--domaine-either) | 3, 5 | Claude | 🟨 presque fini (branche `etape-7-either-helpers`) : il reste `group` (attend les types tableau, étape 6) |
+| 7 | [Domaine Either (handlers)] | 3, 5 | Claude | ✅ |
 | 8 | [Domaines Common / Array / String](#étape-8--domaines-common--array--string) | 4, 5 | Claude | 🟨 8a fait (`pipe`, formes curryfiées) ; 8b : `DString.to` fait (branche `etape-8b-dstring-to`), `print`, `map` et `coalescing` attendent les étapes 4 et 6 |
 | 9 | [Valider les projets 01 → 09](#étape-9--valider-les-projets-01--09) | 6, 7, 8 | tout le monde | ⬜ |
 | 10 | [Projet 10 (asynchrone)](#étape-10--projet-10-asynchrone) | 9 | | ⬜ |
@@ -282,7 +282,7 @@ Les règles à reproduire :
 > | `matchInformation(r, {…})` | ✅ `Either` seulement | `shard_dependencies.MatchInformation(r, []func(T) U{TagX: f, …})` |
 > | `rightPipe(r, f, g…)` | ✅ si chaque étape renvoie le même type d'Either | `RightThen(RightThen(r, f), g)` |
 > | `whenIsRight(r, f)` | ✅ (D-16, `TagValue`) | `WhenIsRight(r, f, wrapValue, wrapLeft)` : la valeur brute est rangée avec `TagValue` |
-> | `group([…])` | ⬜ attend les types tableau (étape 6) | `Group(rs)`, qui renvoie `Either2[[]T, T]` |
+> | `group([...])` | ✅ handler et helper Go generique ajoutes | `Group[T](rs)`, renvoie EitherAny avec le premier echec ou []T |
 > | formes sans données (`whenIsRight(fn)`, `whenIsRightOtherwise(f, g)`, `matchInformation({…})`) | ✅ (étape 8a, D-17) | une fonction Go littérale qui appelle le helper |
 >
 > - **Callbacks** (`either/core/callback.ts`) : un callback TS qui déclare **moins** de paramètres que ce qu'il reçoit (`() => "échec"`) est enveloppé dans `func(_ T) U { return f() }`, car Go exige la signature exacte. Un callback qui déclare un paramètre plus précis que celui reçu n'est pas encore géré.
@@ -309,14 +309,14 @@ Chaque fonction devient un **helper Go générique écrit une fois à la main** 
 | `whenIsRightOtherwise(r, f, g)` | `WhenIsRightOtherwise[T, U](r, f, g func() U) U` | `WhenIsRightOtherwise(r, f, g)` | 05+ |
 | `matchInformation(r, { … })` | `MatchInformation[T, U](r, handlers []func(T) U) U`, avec les handlers **rangés par numéro de tag** (un slice : pas de map, plus rapide) | `MatchInformation(r, []func(float64) string{…})` | 06, 07 |
 | `rightPipe(r, f, g…)` | `RightThen[T, U](r Either[T], f func(T) Either[U]) Either[U]`, à **deux** arguments (Go n'a pas de génériques variadiques) | `RightThen(RightThen(r, f), g)` : appels emboîtés | 07, 08 |
-| `group([…])` | `Group[T](rs []Either[T]) Either2[[]T, T]`, qui s'arrête au premier `left` | `Group(calculations)` | 09 |
+| `group([...])` | termine : handler et helper Go generique ajoutes | `Group[T](rs)`, renvoie EitherAny avec le premier echec ou []T | 09 |
 | types `Fail`, `Left<…>`, unions | — | `Either[T]` ou `Either2[R, L]` selon la règle de D-09.2 (étape 3) | 01, 04, 09 |
 
 **Conseil** : écrire et tester chaque helper dans un petit programme Go à part (`go run`) **avant** d'écrire le handler qui génère son appel.
 
 **Attention** : les formes **sans données** (`DEither.whenIsRight(fn)`, utilisée dans un `pipe` ou un `map`) se traduisent avec l'étape 8. Le `pipe` fournit la donnée.
 
-**Fini quand** : les projets 01, 02, 04, 06 et 07 n'échouent plus sur une fonction `DEither`.
+**Fini** : les handlers Either sont presents, y compris `group`. Validation des projets dependants apres les transformers de letape 6.
 
 ---
 
