@@ -18,7 +18,7 @@ Chaque étape indique : **le but**, **ce qu'il faut avoir lu**, **ce qu'il faut 
 | 2 | [Script de vérification](#étape-2--script-de-vérification) | — | Claude | ✅ |
 | 3 | [Représentation des `Either` en Go](#étape-3--représentation-des-either-en-go) | — | Claude | ✅ (branche `etape-3-either`) |
 | 4 | [`print` fidèle à Node (`util.inspect`)](#étape-4--print-fidèle-à-node) | — | | ✅ |
-| 5 | [Helper de préparation](#étape-5--helper-de-préparation) | — | | ⬜ |
+| 5 | [Helper de préparation](#étape-5--helper-de-préparation) | — | Yacine | ✅ |
 | 6 | [Transformers de base du langage](#étape-6--transformers-de-base-du-langage) | 5 | | ⬜ |
 | 7 | [Domaine Either (handlers)](#étape-7--domaine-either) | 3, 5 | Claude | 🟨 presque fini (branche `etape-7-either-helpers`) : il reste `group` (attend les types tableau, étape 6) |
 | 8 | [Domaines Common / Array / String](#étape-8--domaines-common--array--string) | 4, 5 | Claude | 🟨 8a fait (`pipe`, formes curryfiées) ; 8b : `DString.to` fait (branche `etape-8b-dstring-to`), `print`, `map` et `coalescing` attendent les étapes 4 et 6 |
@@ -224,6 +224,8 @@ Les règles à reproduire :
 ---
 
 ## Étape 5 — Helper de préparation
+
+> ✅ **Fait** sur la branche `etape-5-helper-preparation`. `transformPrepared` conserve les instructions de préparation et laisse les identifiants et les littéraux en place quand c'est possible. `check.sh 00`, `test:types`, `test:lint` et les trois suites d'exécution (`either`, `either-helpers`, `preparation`) passent.
 
 **But** : ne plus recopier dans chaque transformer le motif « transformer l'enfant → vérifier l'erreur → créer une variable temporaire → concaténer `before` ». Il est déjà copié dans `binary.ts` et `call.ts`, et il va revenir partout.
 

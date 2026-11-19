@@ -1,5 +1,6 @@
 import * as DCommon from "@duplojs/lang/common";
 import * as DEither from "@duplojs/lang/either";
+import * as DModeling from "@duplojs/lang/modeling";
 import type * as DObject from "@duplojs/lang/object";
 import * as DString from "@duplojs/lang/string";
 import { GoAST } from "@go";
@@ -8,7 +9,7 @@ import type { Symbol } from "typescript/async";
 import { transform, type Transformer, type TransformerResultNode, type NotfoundTransformer, type TransformationError, type TransformationNotSupported, type TransformationSuccess, type TransformationSuccessPayload, sharedDependencyImportDeclaration, sharedDependencyPackageName, type SharedDependency } from "@transformer";
 import type { FileContext } from "./file";
 import type { TranspilationContext } from "./transpilation";
-import type * as DArray from "@duplojs/lang/array";
+import * as DArray from "@duplojs/lang/array";
 import { resolveDependencyFile, resolveReferenceModule, type DependencyReference, type DependencyFile, type ModuleReference, type ResolvedModuleReference } from "../resolvedReference";
 
 export type { DependencyReference } from "../resolvedReference";
@@ -23,6 +24,18 @@ export interface BuildContext {
 		transformers: GenericTransformers,
 	): Promise<
 		| TransformationSuccess<TransformerResultNode<DArray.Unwrap<GenericTransformers>>>
+		| TransformationError
+		| NotfoundTransformer
+	>;
+	transformPrepared(
+		data: TsAST.Node,
+		transformers: readonly Transformer<GoAST.Expression>[],
+		forceTemporary?: boolean,
+	): Promise<
+		| {
+			before: readonly GoAST.Statement[];
+			operand: GoAST.Expression;
+		}
 		| TransformationError
 		| NotfoundTransformer
 	>;
@@ -56,6 +69,49 @@ export function createBuildContext(
 		transpilation,
 		file,
 		transform: (data, transformers) => transform(data, transformers, context),
+		transformPrepared: async(data, transformers, forceTemporary = false) => {
+			const transformed = DEither.unwrapRight(await context.transform(data, transformers));
+			if (DEither.isLeft(transformed)) {
+				return transformed;
+			}
+
+			const { before, result } = transformed;
+			if (
+				!forceTemporary
+				&& (
+					DModeling.hasTagValue(result, [
+						"[node]identifier",
+						"[node][expression]literal-integer",
+						"[node][expression]literal-float",
+						"[node][expression]literal-imaginary",
+						"[node][expression]literal-rune",
+						"[node][expression]literal-string",
+						"[node][expression]literal-boolean",
+						"[node][expression]literal-nil",
+					])
+					// Un identifiant importé est rendu en Go sous la forme package.nom.
+					|| (TsAST.isIdentifier(data) && DModeling.hasTagValue(result, "[node][expression]selector"))
+					// Le transformer numérique conserve le type number avec float64(...).
+					|| (DModeling.hasTagValue(result, "[node][expression]conversion")
+						&& DModeling.hasTagValue(result.operand, "[node][expression]literal-float"))
+				)
+			) {
+				return {
+					before,
+					operand: result,
+				};
+			}
+
+			const identifier = context.generateIdentifier();
+			const declaration = GoAST.createShortVariableDeclarationStatement({
+				identifier,
+				initializer: result,
+			});
+			return {
+				before: DArray.push(before, declaration),
+				operand: identifier,
+			};
+		},
 		error: (node, content) => DEither.left("transformation-error", {
 			kind: TsAST.SyntaxKind[node.kind],
 			parentKind: node.parent ? TsAST.SyntaxKind[node.parent.kind] : undefined,

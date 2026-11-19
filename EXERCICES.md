@@ -101,26 +101,24 @@ Objet Fail (projet 04) :
 
 **Réponse** :
 - `number` devient `float64` (D-08) ;
-- l'addition passe par des variables temporaires pour les opérandes (mécanisme `before`) ;
-- `DEither.success` devient la shared dependency `EitherSuccessOf[T]`, qui renvoie `EitherSuccess[T]` ;
+- l'addition utilise directement les deux paramètres grâce au helper de préparation (D-06) ;
+- `DEither.success` devient un littéral de struct `EitherAny` (D-18) ;
 - l'appel au niveau du module part dans `init()`, et `main.go` importe le package d'entrée avec `_`.
 
 **Go généré** (`add.ts.go`), avec `EitherAny` (D-18) :
 ```go
 func Sourced_add(Sourced_one float64, Sourced_two float64) (shard_dependencies.EitherAny) {
-	Generated_4 := Sourced_one
-	Generated_5 := Sourced_two
 	return (shard_dependencies.EitherAny{
 		Tag: shard_dependencies.TagRightSuccess,
-		Value: Generated_4 + Generated_5,
+		Value: Sourced_one + Sourced_two,
 	})
 }
 ```
-`DEither.success(x)` devient directement un littéral de struct : pas d'appel de fonction. Les 2 variables temporaires disparaîtront avec l'étape 5 (helper de préparation), pas encore mergée.
+`DEither.success(x)` devient directement un littéral de struct : pas d'appel de fonction. Grâce au helper de préparation (étape 5), l'addition n'a plus de variables temporaires.
 
 **Fait / reste à faire** :
 - [x] corriger B-01. Cette correction est maintenant remplacée par l'étape 3, qui supprime `EitherSuccessOf` ;
-- [ ] (étape 5, D-06) ne plus préparer les identifiants ou littéraux.
+- [x] (étape 5, D-06) utiliser directement les identifiants et littéraux du projet 00.
 
 **État** : ✅ `./.commands/check.sh 00` passe (compile, s'exécute, sortie identique : rien).
 
