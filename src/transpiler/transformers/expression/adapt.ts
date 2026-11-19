@@ -115,7 +115,7 @@ function initializesBindingPattern(node: TsAST.Expression) {
 		&& (TsAST.isObjectBindingPattern(parent.name) || TsAST.isArrayBindingPattern(parent.name));
 }
 
-async function targetType(node: TsAST.Expression, context: BuildContext) {
+export async function targetType(node: TsAST.Expression, context: BuildContext) {
 	const { typeChecker } = context.transpilation;
 	const expected = initializesBindingPattern(node)
 		? undefined
@@ -157,7 +157,8 @@ export async function adaptExpression(
 
 	// Deux objets de formes différentes (`User` passé à `{ name: string }`) :
 	// l'objet temporaire, construit à la compilation (D-21).
-	if (produced?.kind === "concrete" && target?.kind === "concrete") {
+	// Un objet littéral est déjà construit au type attendu (`objectLiteral.ts`).
+	if (produced?.kind === "concrete" && target?.kind === "concrete" && !TsAST.isObjectLiteralExpression(node)) {
 		return convertStructurally({
 			value: expression,
 			source: produced.type,

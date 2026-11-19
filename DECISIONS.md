@@ -644,6 +644,45 @@ shard_dependencies.Reduce(Sourced_numbers, float64(0), func(params struct{ Sourc
 
 **Vérifié** : `tests/darray-reduce/` (10 cas comparés à Node : somme, `index`, chaînes, `exit` du même type et d'un autre type, `nextPush` avec `reduceFrom`, forme curryfiée dans un `pipe`, paramètre non déstructuré, objet comme accumulateur, corps en bloc avec `if`), plus toute la suite.
 
+### D-24 · Fonctions `DObject` — ✅ (19/11/2026, branche `dobject`)
+
+**Constat** : toutes les fonctions `DObject` travaillent sur la **forme** de l'objet, et TypeScript la connaît à la compilation. Le résultat est donc construit directement, sans réflexion à l'exécution :
+```go
+// DObject.pick(user, ["name", "email"])
+struct{ Sourced_name string; Sourced_email string }{Sourced_name: Sourced_user.Sourced_name, Sourced_email: Sourced_user.Sourced_email}
+```
+
+**Traduites** (`duplojs/object/`), avec données et curryfiées (`pipe(user, DObject.pick(["id"]))`) :
+
+| DuploJS | Go |
+|---|---|
+| `pick`, `omit` (tableau ou objet de clés) | struct du type résultat, lu champ par champ sur la source |
+| `assign(objet, valeur)` | champs de `valeur`, sinon ceux de `objet` (comme `{ ...objet, ...valeur }`) |
+| `override(objet, valeur)` | idem, mais une valeur `undefined` ne remplace rien : `OverrideField` |
+| `getProperty(objet, "clé")`, `getDeepProperty(objet, "a.b")` | `objet.Sourced_clé`, `objet.Sourced_a.Sourced_b` |
+| `transformProperty(objet, "clé", f)` | struct avec `f(objet.clé)` à la place de `clé` |
+| `keys`, `values`, `entries` | slice littérale construite depuis la liste des champs |
+| `countKeys` | une constante (`float64(4)`) |
+
+- La source n'est évaluée qu'une fois (variable temporaire si ce n'est pas un nom).
+- Un champ dont la forme diffère (objet imbriqué) passe par la conversion structurelle de D-21.
+
+**Correctifs trouvés en route** :
+- un **objet littéral** est déjà construit au type attendu (`objectLiteral.ts`) : l'adaptateur ne le reconvertit plus (sinon double conversion, qui ne compile pas) ;
+- un **champ facultatif absent** d'un objet littéral (`{ name }` pour `{ name; nickname? }`) vaut maintenant `undefined`, comme en JS, et non le `nil` par défaut de Go.
+
+**Refusé avec une erreur claire** :
+- une clé qui n'est pas un littéral ;
+- un objet dont la forme n'est pas connue (`any`, `Record`) ;
+- `assign` avec un champ facultatif (JS distingue « absent » et « présent mais undefined », Go non) ;
+- `keys`, `values`, `entries`, `countKeys` sur un objet à champs facultatifs (JS ne liste pas un champ absent).
+
+**Différence assumée** : l'**ordre d'affichage** suit le type TS, comme en D-20. Le type de `assign` et `transformProperty` (`Omit<…> & { name }`) place le champ modifié en dernier, alors que JS le garde à sa place. Les valeurs sont identiques. Changer l'ordre en Go donnerait un autre type de struct, incompatible avec le reste du programme.
+
+**Pas encore traduites** : `to`, `transformProperties`, `fromEntries`, `hasKeys`, `deepOverride`, `discriminate*`, `entry`, `is`, `isSimple`.
+
+**Vérifié** : `tests/dobject/` (15 cas comparés à Node, dont les 2 écarts d'ordre vérifiés tels quels), plus toute la suite.
+
 ### D-11 · Asynchrone (projet 10) — 🟡
 - Il n'y a aucune vraie entrée/sortie, donc une **exécution synchrone** (`Promise<T>` traduit en `T`) préserve l'ordre et le résultat.
 - Goroutines et channels seulement en bonus, si on a le temps.

@@ -1,9 +1,11 @@
 import * as DArray from "@duplojs/lang/array";
 import * as DEither from "@duplojs/lang/either";
+import * as DModeling from "@duplojs/lang/modeling";
 import { GoAST, GoPrinter } from "@go";
 import { createTransformer, type Transformer } from "@transformer";
 import { TsAST } from "@typescript";
 import { tsTypeToGo } from "../type/tsTypeToGo";
+import { undefinedShardDependency } from "../../sharedDependency/defaults";
 import { expressionTransformers } from ".";
 import { sequenceOperands, type SequencedOperand } from "../shared/sequence";
 
@@ -99,6 +101,31 @@ export const objectLiteralTransformer: Transformer<GoAST.Expression> = createTra
 			key: keys[index]!,
 			value,
 		}));
+
+		// Champ facultatif absent (`{ name }` pour `{ name; nickname? }`) : `undefined`
+		// comme en JS, et non le `nil` que Go mettrait par défaut.
+		if (!isMap) {
+			const given = new Set(keys.map((key) => GoPrinter.renderNode(key)));
+
+			for (const field of (literalType as GoAST.StructType).fields) {
+				if (
+					DModeling.hasTagValue(field, "[node]struct-field")
+					&& !given.has(field.identifier.value)
+					&& GoPrinter.renderNode(field.typeReference) === "any"
+				) {
+					elements.push(GoAST.createKeyedElement({
+						key: field.identifier,
+						value: GoAST.createStructLiteral({
+							typeReference: GoAST.createPackageTypeReference({
+								packageName: context.registerSharedDependency(undefinedShardDependency.value),
+								identifier: GoAST.createIdentifier("JSUndefined"),
+							}),
+							elements: [],
+						}),
+					}));
+				}
+			}
+		}
 
 		return context.success({
 			before,
