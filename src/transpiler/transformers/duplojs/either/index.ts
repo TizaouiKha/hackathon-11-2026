@@ -3,7 +3,7 @@ import * as DEither from "@duplojs/lang/either";
 import { createTransformer, type Transformer } from "@transformer";
 import type { GoAST } from "@go";
 import { TsAST } from "@typescript";
-import * as DPattern from "@duplojs/lang/pattern";
+import type { BuildContext } from "../../../context/build";
 import { successExpressionHandler } from "./success";
 import { failExpressionHandler } from "./fail";
 import { leftExpressionHandler, rightExpressionHandler } from "./left";
@@ -18,6 +18,34 @@ import { whenIsRightExpressionHandler } from "./whenIsRight";
 import { rightAsyncPipeExpressionHandler } from "./rightAsyncPipe";
 import { asyncGroupExpressionHandler } from "./asyncGroup";
 import { groupExpressionHandler } from "./group";
+
+type EitherHandler = (
+	node: TsAST.Node,
+	context: BuildContext,
+) => Promise<ReturnType<Transformer<GoAST.Expression>["transformer"]>>;
+
+/**
+ * Une fonction `DEither.*` par entrée. Une table plutôt qu'une chaîne de
+ * `DPattern.match` dans un `DCommon.pipe`, limité à 16 arguments : le routeur en
+ * aurait besoin de 17 depuis l'étape 10.
+ */
+const eitherHandlers: Readonly<Record<string, EitherHandler>> = {
+	success: successExpressionHandler,
+	fail: failExpressionHandler,
+	left: leftExpressionHandler,
+	right: rightExpressionHandler,
+	error: errorExpressionHandler,
+	isRight: isRightExpressionHandler,
+	isLeft: isLeftExpressionHandler,
+	unwrapRight: unwrapRightExpressionHandler,
+	whenIsRight: whenIsRightExpressionHandler,
+	whenIsRightOtherwise: whenIsRightOtherwiseExpressionHandler,
+	matchInformation: matchInformationExpressionHandler,
+	rightPipe: (node, context) => rightPipeExpressionHandler(node, context),
+	rightAsyncPipe: rightAsyncPipeExpressionHandler,
+	group: groupExpressionHandler,
+	asyncGroup: asyncGroupExpressionHandler,
+};
 
 export const duploJSEitherDeclarationTransformer: Transformer<GoAST.Declaration> = createTransformer(
 	(_node, context) => context.notSupport(),
@@ -45,69 +73,11 @@ export const duploJSEitherExpressionTransformer: Transformer<GoAST.Expression> =
 			return context.notSupport();
 		}
 
-		return DCommon.pipe(
-			moduleReference.symbol.name,
-			DPattern.match(
-				DCommon.equal("success"),
-				() => successExpressionHandler(node, context),
-			),
-			DPattern.match(
-				DCommon.equal("fail"),
-				() => failExpressionHandler(node, context),
-			),
-			DPattern.match(
-				DCommon.equal("left"),
-				() => leftExpressionHandler(node, context),
-			),
-			DPattern.match(
-				DCommon.equal("right"),
-				() => rightExpressionHandler(node, context),
-			),
-			DPattern.match(
-				DCommon.equal("error"),
-				() => errorExpressionHandler(node, context),
-			),
-			DPattern.match(
-				DCommon.equal("isRight"),
-				() => isRightExpressionHandler(node, context),
-			),
-			DPattern.match(
-				DCommon.equal("isLeft"),
-				() => isLeftExpressionHandler(node, context),
-			),
-			DPattern.match(
-				DCommon.equal("unwrapRight"),
-				() => unwrapRightExpressionHandler(node, context),
-			),
-			DPattern.match(
-				DCommon.equal("whenIsRight"),
-				() => whenIsRightExpressionHandler(node, context),
-			),
-			DPattern.match(
-				DCommon.equal("whenIsRightOtherwise"),
-				() => whenIsRightOtherwiseExpressionHandler(node, context),
-			),
-			DPattern.match(
-				DCommon.equal("matchInformation"),
-				() => matchInformationExpressionHandler(node, context),
-			),
-			DPattern.match(
-				DCommon.equal("rightPipe"),
-				() => rightPipeExpressionHandler(node, context),
-			),
-			DPattern.match(
-				DCommon.equal("rightAsyncPipe"),
-				() => rightAsyncPipeExpressionHandler(node, context),
-			),
-			DPattern.match(
-				DCommon.equal("asyncGroup"),
-				() => asyncGroupExpressionHandler(node, context),
-				DCommon.equal("group"),
-				() => groupExpressionHandler(node, context),
-			),
-			DPattern.otherwise(
-				() => context.error(node),
-			),
-		);
+		const { name } = moduleReference.symbol;
+
+		// `Object.hasOwn` : un nom comme `toString` ne doit pas trouver `Object.prototype`.
+		const handler = Object.hasOwn(eitherHandlers, name) ? eitherHandlers[name] : undefined;
+
+		return handler ? handler(node, context) : context.error(node);
 	},
 );
