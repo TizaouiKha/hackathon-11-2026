@@ -7,7 +7,7 @@ import { TsAST } from "@typescript";
 import { expressionTransformers } from "../expression";
 import { tsTypeOfNodeToGo } from "../type";
 
-type VariableResult = GoAST.ShortVariableDeclarationStatement | GoAST.VariableDeclarationZeroValue;
+type VariableResult = GoAST.AssignmentStatement | GoAST.VariableDeclarationZeroValue;
 
 export const variableStatementTransformer: Transformer<VariableResult> = createTransformer(
 	async(node, context) => {
@@ -31,10 +31,15 @@ export const variableStatementTransformer: Transformer<VariableResult> = createT
 		const identifier = context.createSourceIdentifier(declaration.name.text);
 		if (!TsAST.isSourceFile(node.parent)) {
 			return context.success({
-				before: initializer.before,
-				result: GoAST.createShortVariableDeclarationStatement({
-					identifier,
-					initializer: initializer.result,
+				before: DArray.concat(initializer.before, [
+					GoAST.createShortVariableDeclarationStatement({
+						identifier,
+						initializer: initializer.result,
+					}),
+				]),
+				result: GoAST.createAssignmentStatement({
+					targets: DCommon.cast([GoAST.createIdentifier("_")]),
+					values: DCommon.cast([identifier]),
 				}),
 			});
 		}

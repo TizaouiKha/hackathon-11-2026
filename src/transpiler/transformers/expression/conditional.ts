@@ -6,6 +6,7 @@ import { createTransformer, type Transformer } from "@transformer";
 import { TsAST } from "@typescript";
 import { tsTypeOfNodeToGo } from "../type";
 import { expressionTransformers } from ".";
+import { transformTruthiness } from "./javascriptTruthiness";
 
 export const conditionalExpressionTransformer: Transformer<GoAST.Identifier> = createTransformer(
 	async(node, context) => {
@@ -13,7 +14,7 @@ export const conditionalExpressionTransformer: Transformer<GoAST.Identifier> = c
 			return context.notSupport();
 		}
 
-		const condition = await context.transformPrepared(node.condition, expressionTransformers.value);
+		const condition = await transformTruthiness(node.condition, context);
 		if (DEither.isLeft(condition)) {
 			return condition;
 		}
@@ -50,7 +51,7 @@ export const conditionalExpressionTransformer: Transformer<GoAST.Identifier> = c
 				],
 				[
 					GoAST.createIfStatement({
-						condition: condition.operand,
+						condition: condition.condition,
 						body: GoAST.createBlockStatement({
 							statements: DArray.concat(whenTrue.before, [assign(whenTrue.result)]),
 						}),

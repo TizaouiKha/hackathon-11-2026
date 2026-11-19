@@ -5,7 +5,7 @@ import * as DModeling from "@duplojs/lang/modeling";
 import { GoAST } from "@go";
 import { createTransformer, type Transformer } from "@transformer";
 import { TsAST } from "@typescript";
-import { TypeFlags } from "typescript/async";
+import { TypeFlags, type Symbol } from "typescript/async";
 import { blockStatementTransformer } from "../statement/block";
 import { tsTypeToGo } from "../type";
 import { expressionTransformers } from ".";
@@ -15,20 +15,38 @@ interface TransformedParameter {
 	prefix: readonly GoAST.Statement[];
 }
 
-function collectUsedNames(node: TsAST.Node, names = new Set<string>()) {
+function collectIdentifiers(node: TsAST.Node, identifiers: TsAST.Identifier[] = []) {
 	if (TsAST.isIdentifier(node)) {
-		names.add(node.text);
+		identifiers.push(node);
 	}
 	for (const child of node.getChildren()) {
-		collectUsedNames(child, names);
+		collectIdentifiers(child, identifiers);
 	}
-	return names;
+	return identifiers;
+}
+
+async function collectUsedSymbols(
+	node: TsAST.Node,
+	context: Parameters<Transformer<GoAST.FunctionLiteral>["transformer"]>[1],
+) {
+	const symbols = await DCommon.asyncPipe(
+		collectIdentifiers(node),
+		DArray.map((identifier) => context.transpilation.typeChecker.getSymbolAtLocation(identifier)),
+		DCommon.promiseAll,
+	);
+	const usedSymbols = new Set<Symbol>();
+	for (const symbol of symbols) {
+		if (symbol) {
+			usedSymbols.add(symbol);
+		}
+	}
+	return usedSymbols;
 }
 
 async function transformParameter(
 	parameter: TsAST.ParameterDeclaration,
 	context: Parameters<Transformer<GoAST.FunctionLiteral>["transformer"]>[1],
-	usedNames: ReadonlySet<string>,
+	usedSymbols: ReadonlySet<Symbol>,
 ) {
 	if (parameter.dotDotDotToken || parameter.initializer) {
 		return context.error(parameter, "rest-and-default-arrow-parameters-not-supported-yet");
@@ -72,7 +90,8 @@ async function transformParameter(
 		) {
 			return context.error(element, "tuple-binding-element-not-supported");
 		}
-		if (!usedNames.has(element.name.text)) {
+		const elementSymbol = await context.transpilation.typeChecker.getSymbolAtLocation(element.name);
+		if (!elementSymbol || !usedSymbols.has(elementSymbol)) {
 			continue;
 		}
 
@@ -107,9 +126,10 @@ export const arrowFunctionTransformer: Transformer<GoAST.FunctionLiteral> = crea
 			return context.notSupport();
 		}
 
+		const usedSymbols = await collectUsedSymbols(node.body, context);
 		const parameters = await DCommon.asyncPipe(
 			node.parameters,
-			DArray.map((parameter) => transformParameter(parameter, context, collectUsedNames(node.body))),
+			DArray.map((parameter) => transformParameter(parameter, context, usedSymbols)),
 			DCommon.promiseAll,
 		);
 		const failedParameter = DArray.find(parameters, DEither.isLeft);
@@ -143,15 +163,25 @@ export const arrowFunctionTransformer: Transformer<GoAST.FunctionLiteral> = crea
 			body = GoAST.createBlockStatement({
 				statements: DArray.concat(prefix, transformedBody.before, transformedBody.result.statements),
 			});
-		} else {
+		} else if (returnsNothing) {
 			const expressionBody = DEither.unwrapRight(
 				await context.transform(node.body, expressionTransformers.value),
 			);
 			if (DEither.isLeft(expressionBody)) {
 				return expressionBody;
 			}
-			if (returnsNothing) {
-				return context.error(node.body, "void-expression-arrow-not-supported-yet");
+			if (!DModeling.hasTagGroup(expressionBody.result, "statement")) {
+				return context.error(node.body, "void-expression-does-not-produce-a-go-statement");
+			}
+			body = GoAST.createBlockStatement({
+				statements: DArray.concat(prefix, expressionBody.before, [expressionBody.result]),
+			});
+		} else {
+			const expressionBody = DEither.unwrapRight(
+				await context.transform(node.body, expressionTransformers.value),
+			);
+			if (DEither.isLeft(expressionBody)) {
+				return expressionBody;
 			}
 			body = GoAST.createBlockStatement({
 				statements: DArray.concat(

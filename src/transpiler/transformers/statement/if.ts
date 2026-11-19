@@ -4,7 +4,7 @@ import * as DModeling from "@duplojs/lang/modeling";
 import { GoAST } from "@go";
 import { createTransformer, type Transformer } from "@transformer";
 import { TsAST } from "@typescript";
-import { expressionTransformers } from "../expression";
+import { transformTruthiness } from "../expression/javascriptTruthiness";
 import { statementTransformers } from ".";
 
 async function transformBranch(node: TsAST.Statement, context: Parameters<Transformer<GoAST.IfStatement>["transformer"]>[1]) {
@@ -29,7 +29,7 @@ export const ifStatementTransformer: Transformer<GoAST.IfStatement> = createTran
 			return context.notSupport();
 		}
 
-		const condition = await context.transformPrepared(node.expression, expressionTransformers.value);
+		const condition = await transformTruthiness(node.expression, context);
 		if (DEither.isLeft(condition)) {
 			return condition;
 		}
@@ -49,7 +49,7 @@ export const ifStatementTransformer: Transformer<GoAST.IfStatement> = createTran
 		return context.success({
 			before: condition.before,
 			result: GoAST.createIfStatement({
-				condition: condition.operand,
+				condition: condition.condition,
 				body,
 				elseBranch,
 			}),

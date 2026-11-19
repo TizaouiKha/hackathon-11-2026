@@ -82,7 +82,7 @@ Objet Fail (projet 04) :
 **Paramètres**
 - identifiant simple ✔ · déstructuration de tuple `[a, b, c]` ✔
 
-**Validation de l'étape 6** : `tests/language-basics/` couvre 16 cas à
+**Validation de l'étape 6** : `tests/language-basics/` couvre 32 cas à
 l'exécution, dont les variables module/locales, les deux branches d'un ternaire,
 les deux formes de fonction fléchée, les tableaux et les tuples homogènes et
 hétérogènes. Le projet 01 passe ; les projets suivants sont maintenant bloqués

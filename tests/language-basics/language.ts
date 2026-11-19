@@ -32,8 +32,32 @@ export function unary(value: number, condition: boolean): number {
 	return +value;
 }
 
+export function bitwiseNot(value: number): number {
+	return ~value;
+}
+
 export function logical(value: number): boolean {
 	return value > 0 && value < 10;
+}
+
+export function numericNot(value: number): boolean {
+	return !value;
+}
+
+export function numericCondition(value: number): string {
+	if (value) {
+		return "truthy";
+	}
+	return "falsy";
+}
+
+export function numericTernary(value: number): string {
+	return value ? "truthy" : "falsy";
+}
+
+export function unusedLocal(): number {
+	const unused = 1;
+	return 2;
 }
 
 export function expressionArrow(value: number): number {
@@ -47,6 +71,23 @@ export function blockArrow(value: number): number {
 		return result;
 	};
 	return increment(value);
+}
+
+export function voidExpressionArrow(callback: (value: number) => void): void {
+	// eslint-disable-next-line typescript/no-confusing-void-expression
+	const invoke = (value: number) => (callback(value));
+	invoke(7);
+}
+
+export function shadowedTuple(ready: boolean): number {
+	const read = ([value]: [number]) => {
+		if (ready) {
+			const value = 1;
+			return value;
+		}
+		return 0;
+	};
+	return read([2]);
 }
 
 export function homogeneousTuple(one: number, two: number): number {

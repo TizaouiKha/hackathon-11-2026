@@ -248,7 +248,7 @@ Les règles à reproduire :
 
 > ✅ **Fait** : variables locales et module, `if`/`else`, retours vides, chaînes,
 > unaires, parenthèses, ternaires, fonctions fléchées, tableaux, tuples et
-> paramètres tuple déstructurés. `tests/language-basics/` vérifie 16 comportements
+> paramètres tuple déstructurés. `tests/language-basics/` vérifie 32 comportements
 > à l'exécution. Le projet 01 passe entièrement ; les projets 02 à 08 atteignent
 > désormais leurs fonctions `DArray.map` / `DArray.coalescing`, qui relèvent de
 > l'étape 8 et non des constructions de langage de cette étape.
