@@ -26,10 +26,10 @@ func main() {
 	expect("division par zéro", math.IsInf(preparation.Sourced_divideByZero(1), 1), true)
 	expect("dépassement de capacité", math.IsInf(preparation.Sourced_overflow(), 1), true)
 
-	success := dependencies.Either[float64]{Tag: dependencies.TagRightSuccess, Value: 2}
-	fail := dependencies.Either[float64]{Tag: dependencies.TagLeftFail}
+	success := dependencies.EitherAny{Tag: dependencies.TagRightSuccess, Value: float64(2)}
+	fail := dependencies.EitherAny{Tag: dependencies.TagLeftFail}
 	// Ce tag ferait échouer matchInformation si le membre droit était exécuté.
-	unhandled := dependencies.Either[float64]{Tag: 255}
+	unhandled := dependencies.EitherAny{Tag: 255}
 
 	expect("false && ... ignore le membre droit", preparation.Sourced_both(false, unhandled), false)
 	expect("true && ... lit le membre droit", preparation.Sourced_both(true, success), true)

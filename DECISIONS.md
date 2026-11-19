@@ -208,15 +208,220 @@ Either[[]float64]{Tag: TagLeftFail}                     // erreur : inchangée
 
 ### D-10 · `pipe` / formes curryfiées — ✅ (adapté à D-09.3)
 - `DCommon.pipe(x, f, g)` est **déroulé à la compilation** en `t1 := f(x)`, puis `t2 := g(t1)`. Ce n'est pas une optimisation : Go n'a pas de génériques variadiques, donc un `Pipe` générique est impossible sans écrire `Pipe2`, `Pipe3`… Le déroulé est ici le plus simple.
-- Les formes curryfiées (`DEither.whenIsRight(fn)` sans données) ne sont traduites que dans un `pipe` ou un `map`, où la donnée est connue. Elles deviennent un appel au helper générique avec cette donnée : `t2 := WhenIsRight(t1, fn)`.
+- ~~Les formes curryfiées ne sont traduites que dans un `pipe` ou un `map`.~~ **Remplacé par D-17** : une forme curryfiée devient une vraie fonction Go, utilisable partout.
+- **Implémenté (18/11/2026, branche `etape-8a-pipe`)** dans `duplojs/common/pipe/` :
+  ```go
+  Generated_8 := Sourced_value                // l'entrée
+  Generated_9 := Sourced_double(Generated_8)  // étape 1
+  Generated_10 := Sourced_addTen(Generated_9) // étape 2 -> résultat
+  ```
+  Ordre d'évaluation identique à TypeScript : l'entrée, puis **toutes les étapes** (les fonctions elles-mêmes), puis les appels. Une étape qui n'est pas un simple nom de fonction est d'abord rangée dans une variable.
+
+### D-17 · Formes curryfiées des helpers Either = fonctions Go — ✅ (18/11/2026, branche `etape-8a-pipe`)
+**Le problème.** Dans `DCommon.pipe(result, DEither.whenIsRight(double))`, `DEither.whenIsRight(double)` n'a **pas** de donnée : c'est une **fonction** qui attend l'Either. Le projet 08 en passe même une à `DArray.map`.
+
+**Choix.** La forme curryfiée devient une **fonction Go littérale**, qui appelle le même helper que la forme avec données :
+```go
+func(input shard_dependencies.Either[float64]) shard_dependencies.Either[float64] {
+    return shard_dependencies.WhenIsRight(input, Sourced_double, …)
+}
+```
+- **Le type du paramètre et du résultat** vient de la signature **instanciée par le checker**. Dans un `pipe`, TypeScript connaît l'entrée, par exemple `(input: Fail | Success<number>) => number | Fail`.
+- **Aucun code dupliqué** : chaque helper (`whenIsRight`, `whenIsRightOtherwise`, `matchInformation`) est écrit comme une « opération » qui reçoit son entrée (`either/core/operand.ts`). La forme avec données lui passe l'argument TS, la forme curryfiée lui passe le paramètre de la fonction générée.
+- **Évaluation** : les callbacks sont évalués **une fois**, à la création de la fonction curryfiée, comme en TypeScript. Leurs préparations restent hors de la fonction Go.
+- **Pourquoi pas « injecter » la donnée dans le `pipe` ?** C'est plus court en Go, mais ça ne marche que dans un `pipe`. Une vraie fonction marche aussi dans `DArray.map` (projet 08) et partout ailleurs.
+- **Vérifié** : `tests/pipe/`, 15 contrôles. Les valeurs attendues ont été obtenues en exécutant le même code TypeScript avec DuploJS. Ce test confirme notamment que la valeur brute (`TagValue`) produite par `whenIsRight` n'est **pas** un Right pour l'étape suivante, comme en DuploJS.
+
+### D-18 · `EitherAny` et couche de traduction TypeScript → Go — ✅ validé avec le prof (18/11/2026), en cours (branche `d18-traduction-types`)
+
+**Le problème.** DuploJS raisonne par **issue** : une information et sa valeur, en nombre illimité, chacune de son propre type. C'est le sens de l'article « Une erreur devrait être identifiable avant d'être traitée ». Notre représentation (D-09.2 : `Either[T]` / `Either2[R, L]`) découpe par **côté**, ne gère que 2 types de valeur, et rejette des unions réelles comme celle du code du prof : `Left<"must-be-not-contain-number", undefined> | Error<null> | Success<number & Positive>`.
+
+Plus largement, TypeScript et Go **n'expriment pas les types de la même manière** :
+- unions, types littéraux, marques (`number & Positive`) ;
+- typage structurel contre typage nominal ;
+- narrowing selon l'endroit, types calculés (`Extract`, `ReturnType`).
+
+Les valeurs ne se comportent pas pareil non plus : `"é".length` vaut 1 en JS (UTF-16) mais `len("é")` vaut 2 en Go (UTF-8).
+
+**Décision, en deux parties.**
+
+**1. Une seule représentation pour toutes les unions d'`Either` :**
+```go
+type EitherAny struct {
+    Tag   EitherTag // l'issue : information + côté (tags inchangés, TagValue compris)
+    Value any       // la valeur, de n'importe quel type ; JSUndefined{} / JSNull{} pour undefined / null
+}
+```
+- N issues, de n'importe quel type, sans règle `Either` / `Either2` et sans conversion entre formes d'union.
+- **Côté Go, on ne vérifie pas le type de la valeur** : TypeScript l'a déjà validé.
+- **Lire la valeur** : un `any` est une boîte fermée, et Go refuse `v + 1` ou `v.Name`. À chaque endroit où le code lit la valeur, le checker connaît son type exact. Le transpileur génère donc :
+  - **une assertion** `e.Value.(float64)` si TS indique un seul type (~1 ns mesurée) ;
+  - **un type switch** si TS indique une union de valeurs brutes ;
+  - **rien** si la valeur est seulement transmise ;
+  - **la réflexion** pour `print`.
+- **Mesuré** (`go test -bench`) : assertion ~1 ns. Ranger un `float64` dans `any` coûte une allocation (6,3 ns contre 2,4 ns sans). Une case `Num float64` à part est une **optimisation possible plus tard** (étape 11), pas maintenant.
+
+**2. Une couche de traduction centrale : `tsTypeToGo(type)`.** Un **seul** endroit traduit un type du checker (objet `Type`, et non plus un nœud de type) en type Go :
+
+| TypeScript | Go |
+|---|---|
+| `number`, littéral numérique, `number & Marque` | `float64` |
+| `string`, littéral, template literal, `string & Marque` | `string` |
+| `boolean`, `true`, `false` | `bool` |
+| `null` / `undefined`, `void` | `shard_dependencies.JSNull` / `JSUndefined` |
+| union contenant un type `Either` de DuploJS | `shard_dependencies.EitherAny` |
+| `T[]`, `readonly T[]` | `[]T` |
+| tuple `[A, B, C]` | `[3]T` si tous les éléments ont le même type Go, sinon `struct{ V0 A; V1 B; V2 C }` |
+| objet `{ name: string }` | struct **anonyme** `struct{ Name string }` : Go traite deux structs anonymes de même forme comme le même type, ce qui correspond au typage structurel de TS |
+| fonction `(a: A) => R` | `func(A) R` |
+| `Promise<T>` | `T` (D-11, exécution synchrone) |
+| union de valeurs brutes (`string \| number`), `unknown`, `any`, `T` générique non résolu | `any` |
+
+Les types calculés (`Extract`, `ReturnType`…) n'ont pas besoin de règle : le checker donne leur **résultat** à chaque endroit.
+
+**Pourquoi.**
+- Un seul point de vérité au lieu de traductions éparpillées dans chaque transformer. C'est la cause des limites rencontrées : `number[]` non géré, unions refusées, marques non retirées.
+- Ça débloque d'un coup `EitherAny`, le narrowing, les tableaux (étape 6) et l'exemple du prof.
+
+**Plan.**
+1. **Phase 1, décidée en équipe : uniquement `EitherAny` et les types primitifs.**
+   - `tsTypeToGo` traduit `number`, `string`, `boolean`, `null`, `undefined` / `void`, leurs littéraux, les marques et les unions d'`Either`.
+   - Tout le reste (tableaux, tuples, objets, fonctions, `Promise`) renvoie pour l'instant une **erreur claire** `type-not-supported-yet`.
+   - On passe à `EitherAny` (constructeurs, helpers, `print`).
+2. Lecture typée aux endroits de lecture, narrowing compris.
+3. Tableaux, tuples, objets, fonctions, `Promise` (le reste du tableau ci-dessus).
+4. Sémantique des valeurs (`JSStringLength` en UTF-16…).
+
+**Remplace** D-09.2 (règle `Either` / `Either2`) et la partie « par côté » de D-09.4. Le tag entier (D-09.1), `TagValue` (D-16) et les formes curryfiées (D-17) restent.
+
+#### D-18.1 · Phase 1 faite — ✅ (18/11/2026, branche `d18-traduction-types`)
+
+**`tsTypeToGo`** (`transformers/type/tsTypeToGo.ts`) :
+- c'est le **seul** point de traduction des types ;
+- il travaille sur les objets `Type` du checker, et non plus sur des nœuds de type ;
+- les types écrits dans la source (`(one: number)`) passent par `typeNodeTransformer`, qui demande leur `Type` au checker puis appelle `tsTypeToGo` ;
+- les paramètres et retours de fonction prennent toujours le type **résolu** par le checker, qu'il soit écrit ou inféré. Une fonction `void` n'a pas de retour Go ; une fonction qui renvoie `undefined` renvoie un `JSUndefined`.
+
+**Les issues d'un Either** (`either/core/issues.ts`) sont lues sur le `Type` :
+- les membres `Success`, `Fail`, `Error`, `Left` et `Right`, dont l'origine `@duplojs/lang` est vérifiée par le symbole ;
+- leur information et le type de leur valeur, via `getTypeArguments` ;
+- les autres membres comme valeurs brutes (`TagValue`).
+
+**`EitherAny`** remplace `Either[T]` / `Either2[R, L]`, partout.
+
+**Constructeurs** : de simples littéraux `EitherAny{Tag, Value}`. Il n'y a plus de « type cible » à calculer. Sont ajoutés :
+- `DEither.error(v)` (issue `left` / `error`) ;
+- `DEither.right("info", v)`.
+
+**Helpers** : une seule version chacun, sur `EitherAny`. Le type `T` est celui que le callback TypeScript déclare, inféré par Go, et l'assertion `input.Value.(T)` ouvre la valeur.
+
+| Helper | Signature |
+|---|---|
+| `WhenIsRightOtherwise[T, U]` | `(input EitherAny, onRight func(T) U, otherwise func(EitherAny) U) U` |
+| `MatchInformation[U]` | `(input EitherAny, handlers []func(any) U) U` : chaque handler est enveloppé pour ouvrir **sa** valeur avec **son** type |
+| `RightThen[T]` | `(input EitherAny, next func(T) EitherAny) EitherAny` |
+| `WhenIsRight[T, V]` | `(input EitherAny, onRight func(T) V) EitherAny`, avec `TagValue` |
+
+**Limites levées** :
+- `matchInformation`, `rightPipe` et `whenIsRight` sur des issues de types différents ;
+- une étape de `rightPipe` qui change de type ou renvoie une valeur brute (rangée dans un `success`, comme DuploJS) ;
+- `whenIsRight` avec un callback qui renvoie un Either (même comportement que `RightThen`).
+
+**Adaptation des callbacks** (`either/core/callback.ts`), automatique :
+- moins de paramètres déclarés que reçus ;
+- `any` reçu alors qu'un type précis est attendu : assertion ;
+- type de retour différent de celui attendu par le helper.
+
+**Valeurs `null` / `undefined`** (`expression/nullish.ts`) : `JSNull{}` / `JSUndefined{}`, des marqueurs de taille nulle.
+
+**`print`** marche avec `EitherAny` (lecture de `Value` par réflexion), avec une **correction** : la 4ᵉ clé (`…/success: null`) n'est affichée que pour `success`, `error` et `fail`, comme dans Node. Un `left("x")` ou un `right("x", v)` n'en a pas.
+
+**`build.ts`** : une dépendance par défaut (`JSNull`…) enregistrée explicitement n'est plus déclarée deux fois.
+
+**Vérifié** :
+- `tests/ts-types/` (15 contrôles) :
+  - les signatures Go générées, lues par réflexion (`number & Positive` donne `float64`, `"a" | "b"` donne `string`, `string | number` donne `any`, l'union du prof donne `EitherAny`…) ;
+  - les valeurs ;
+  - l'affichage des issues du code du prof, **identique à Node** (obtenu en exécutant le même code avec `tsx`) ;
+- les 6 autres tests d'exécution, mis à jour pour `EitherAny`, `check.sh 00`, les types et le lint (0 avertissement).
+
+**Pas encore fait (phases 2 à 4)** :
+- ~~la lecture typée lors du narrowing~~ (D-18.2) ;
+- ~~`unwrapRight`, `isLeft`~~ (D-18.2) ;
+- ~~les tableaux, objets, tuples, fonctions et `Promise`~~ (D-18.3) ;
+- `JSStringLength`.
+
+#### D-18.2 · Phase 2 faite — ✅ (18/11/2026, branche `d18-phase2-narrowing`)
+
+**Adaptation centrale des expressions** (`expression/adapt.ts`). Toute expression passe par `expressionTransformers`, qui enveloppe désormais les transformeurs bruts (`rawExpressionTransformers`). Pour chaque expression, on compare trois types connus de TypeScript :
+- **produit** : ce que le Go de l'expression fabrique vraiment. Pour un identifiant, c'est le type **déclaré** de la variable (`value: string | Fail` reste un `EitherAny` en Go, même là où TS l'a rétréci) ; sinon, le type au point ;
+- **rétréci** : `getTypeAtLocation` (après `isLeft`, `if`, `||`…) ;
+- **attendu** : `getContextualType` (paramètre appelé, type de retour).
+
+La cible est le type attendu s'il est concret ou Either, sinon le type rétréci.
+
+| produit | cible | Go |
+|---|---|---|
+| `EitherAny` | concret `T` | `x.Value.(T)` |
+| `EitherAny` | `any` | `x.Value` |
+| `any` | concret `T` | `x.(T)` |
+| brut | `EitherAny` | `EitherAny{Tag: TagValue, Value: x}` (D-16) |
+
+Dans les autres cas, ou si un des types n'est pas encore traduisible (fonction, générique), l'expression est gardée telle quelle. Le sondage des types passe par un contexte « silencieux » qui n'ajoute pas d'import : un import Go inutilisé ne compile pas.
+
+**`isLeft`** : `x.Tag.IsLeft()`, avec une table `eitherTagIsLeft` remplie pour les tags left. `TagValue` n'est ni right ni left, comme dans DuploJS.
+
+**`unwrapRight`**, choisi d'après le type du résultat donné par TypeScript :
+- entrée sans Either : renvoyée telle quelle ;
+- résultat sans Either (que des issues right) : `x.Value.(T)` ;
+- résultat `any` : `x.Value` ;
+- résultat encore union d'Either (`number | Fail`) : helper `UnwrapRight(input EitherAny) EitherAny` (la valeur extraite devient `TagValue`).
+
+Passé comme fonction (`pipe(x, DEither.unwrapRight)`), il devient une fonction Go littérale typée par le type **attendu** (la signature générique n'est pas instanciée). `translateCurried` et cette forme partagent `translateFunctionValue` (`either/core/operand.ts`).
+
+**Vérifié** : `tests/narrowing/` (12 contrôles, valeurs attendues obtenues avec `tsx`), les 7 autres tests d'exécution, `check.sh 00`, les types et le lint.
+
+**Limite** : la lecture après narrowing (`EitherAny` → `x.Value.(T)`) est implémentée, mais aucun test ne l'exerce encore. Sans `if`, `const` ni ternaire (étape 6), on ne peut pas écrire de narrowing transpilable : `isLeft(x) || f(x)` donne `true | number`, qui n'a pas de traduction Go simple. Un test sera ajouté dès que l'étape 6 apporte le `if`.
+
+#### D-18.3 · Phase 3 faite — ✅ (18/11/2026, branche `d18-phase3-types`)
+
+`tsTypeToGo` traduit maintenant les types composés. Seule la **traduction des types** est faite ici : les expressions (`[1, 2]`, `{ name }`, `value.name`, fonctions fléchées) restent à l'étape 6, qui s'appuiera sur ces types.
+
+| TypeScript | Go |
+|---|---|
+| `T[]`, `readonly T[]` | `[]T` |
+| tuple `[A, B]` | `[2]T` si les éléments ont un seul type Go, sinon `struct{ V0 A; V1 B }` |
+| objet `{ name: string }` | struct anonyme `struct{ Sourced_name string }` |
+| `Record<string, T>`, `{ [key: string]: T }` | `map[string]T` (`map[float64]T` pour une clé `number`) |
+| fonction `(a: A, ...rest: B[]) => R` | `func(A, ...B) R` ; `void` : pas de retour |
+| `Promise<T>` | `T` (D-11) |
+| paramètre de type `T` non résolu | `any` |
+
+**Choix.**
+- **Noms des champs** : `createSourceIdentifier` (`Sourced_name`), comme les autres identifiants venus de la source. Le champ est exporté, et un nom TS qui n'est pas un identifiant Go valide est échappé de la même façon.
+- **Structs anonymes** : Go traite deux structs anonymes de même forme comme le même type, ce qui correspond au typage structurel de TS. Vérifié : une valeur construite côté Go traverse la fonction transpilée et reste `==`.
+- **Types récursifs** (`interface Node { next: Node }`) : erreur claire `recursive-type-not-supported-yet`, au lieu d'une boucle infinie. Il faudrait un type nommé (`type Node struct { Next *Node }`) ; ce sera fait si un projet en a besoin.
+- **Refusés pour l'instant**, avec une erreur claire : fonctions surchargées, objets à la fois appelables et porteurs de propriétés, objets avec à la fois des propriétés et une signature d'index.
+
+**Effet sur la phase 2** : les types de fonction sont maintenant traduisibles, donc l'adaptateur voit les fonctions comme des types concrets ; il ne les modifie pas (produit et cible de même nature).
+
+**Vérifié** : `tests/composite-types/` (17 contrôles : signatures lues par réflexion, allers-retours d'objet, de tuple et de map, callback appelé, `Success<number[]>`), les 8 autres tests d'exécution, `check.sh 00`, les types, le lint, et l'erreur sur un type récursif.
 
 ### D-11 · Asynchrone (projet 10) — 🟡
 - Il n'y a aucune vraie entrée/sortie, donc une **exécution synchrone** (`Promise<T>` traduit en `T`) préserve l'ordre et le résultat.
 - Goroutines et channels seulement en bonus, si on a le temps.
 
-### D-12 · Rendu des nombres en chaîne — 🟡
+### D-12 · Rendu des nombres en chaîne — ✅ (18/11/2026, branche `etape-8b-dstring-to`)
 - `DString.to(3)` doit donner `"3"` comme en JS, pas `"3.000000"`.
-- Prévoir une shared dependency fidèle au formatage JS : `strconv.FormatFloat(f, 'f', -1, 64)` couvre les cas courants, à vérifier sur les exposants et `NaN`.
+- ~~`strconv.FormatFloat(f, 'f', -1, 64)` couvre les cas courants.~~ Ce n'est **pas suffisant** : JavaScript passe en notation exponentielle à partir de `1e21` et en dessous de `1e-6` (`1e+21`, `1e-7`), et écrit `NaN`, `Infinity` et `0` pour `-0`.
+- **Choix** : la shared dependency `JSNumberToString(float64) string` (`duplojs/string/to/sharedDependency.ts`) suit **pas à pas l'algorithme de la spécification ECMAScript** (« Number::toString »). Elle part des chiffres les plus courts que donne `strconv.FormatFloat(value, 'e', -1, 64)`, la même règle que JavaScript, puis place la virgule ou l'exposant selon les mêmes seuils.
+- **Vérifié** (`tests/js-number-to-string/`) : **2 034 nombres** comparés à `String(x)` de Node, sans écart. Ce sont 34 cas limites (`0.30000000000000004`, `1e+21`, `1e-7`, `5e-324`, `-0`, `NaN`, `±Infinity`, `2**53`…) et 2 000 `float64` aléatoires tirés sur tous les bits, avec une graine fixe.
+- **`DString.to`** (`duplojs/string/`) :
+  - appelée : `DString.to(n)` devient `shard_dependencies.JSNumberToString(n)` ;
+  - passée comme fonction (`DArray.map(DString.to)`, `success: DString.to`) : elle devient `shard_dependencies.JSNumberToString`, de type `func(float64) string`.
+
+  Seuls les nombres sont traduits (le seul usage des exercices) ; les autres types renvoient une erreur claire.
+- **Pour `print` (étape 4)** : réutiliser `JSNumberToString` pour afficher les nombres, puisque `util.inspect` les écrit comme `String(x)`.
 
 ### D-13 · `print` = format `util.inspect` de Node, pas du JSON — ✅ (constat, 17/11/2026)
 - `DCommon.print(x)` appelle `console.info(x)` (source : `@duplojs/lang/dist/common/print.mjs`). Node formate donc avec `util.inspect`.
@@ -236,6 +441,83 @@ Either[[]float64]{Tag: TagLeftFail}                     // erreur : inchangée
 
 ### D-15 · Organisation du travail — ✅
 - Les étapes, leurs dépendances et la répartition sont dans [ETAPES.md](ETAPES.md). Chacun s'inscrit sur une étape avant de la commencer.
+- **Les PR s'ouvrent sur le fork, jamais sur le dépôt `duplojs`** (ajout du 18/11/2026). Sur un fork, `gh pr create` vise par défaut le dépôt **d'origine**, celui des organisateurs. Il faut toujours préciser le dépôt :
+  ```bash
+  gh pr create --repo TizaouiKha/hackathon-11-2026 --base main --head <ma-branche>
+  ```
+
+---
+
+## Revues de code
+
+Les remarques de relecture des PR, pour ne pas les perdre. Statuts : 🔴 à corriger avant le merge · 🟡 à traiter plus tard · ✅ traité.
+
+### R-01 · Étape 5 — helper de préparation (Yacine, branche `etape-5-helper-preparation`) — relue le 18/11/2026
+**Verdict : bon travail, à merger** une fois la PR déplacée sur le fork.
+
+**Ce qui a été vérifié** (sur une branche locale qui réunit l'étape 5 et le `main` du 18/11, rien n'a été poussé) :
+- le merge avec `main` (étapes 3, 7 et 8a) se fait **sans conflit**, alors que la branche part d'avant l'étape 8a ;
+- **tous les tests passent** : `tests/preparation/` (le sien), `tests/either/`, `tests/either-helpers/`, `tests/pipe/`, `check.sh 00`, `test:types`, et `test:lint` sans avertissement ;
+- le Go généré est plus lisible : `Value: Sourced_one + Sourced_two`, sans les 2 variables temporaires d'avant ;
+- `&&` et `||` n'évaluent leur partie droite que si nécessaire. Le test le prouve avec un tag invalide qui planterait sinon ;
+- `x / 0` passe par une variable, parce que Go refuse de compiler une division par la constante 0 ;
+- **contrôle ajouté pendant la revue** : les opérations entre deux littéraux sont maintenant calculées par Go **à la compilation** (`float64(0.1) + float64(0.2)`). Le résultat est identique à JavaScript sur 6 cas : `0.1 + 0.2`, `0.1 * 3`, `1 / 3`, `0.7 + 0.1`, `1e16 + 1`, `5e-324 / 2`. Pas de différence de calcul.
+
+**Remarques :**
+1. 🔴 **PR ouverte sur le mauvais dépôt** : elle est sur [duplojs/hackathon-11-2026#5](https://github.com/duplojs/hackathon-11-2026/pull/5), le dépôt des organisateurs. Il faut la fermer et la rouvrir sur le fork (commande dans D-15). Sinon, elle ne peut pas être mergée dans notre `main`.
+2. 🟡 **Ordre d'évaluation avec les variables.** `transformPrepared` ne copie plus les identifiants dans une variable temporaire. Si un argument **suivant** modifie la variable, Go lira la nouvelle valeur alors que JavaScript lit l'ancienne :
+   ```ts
+   f(x, change())   // change() modifie x : TS passe l'ancien x, le Go généré le nouveau
+   ```
+   Ce n'est **pas possible aujourd'hui** : aucun transformer ne traduit encore d'affectation, et aucun exercice ne modifie de variable. Ça le deviendra avec les affectations de l'étape 6. **Correction proposée** : quand un opérand suivant a des instructions de préparation (`before` non vide), copier dans une variable les identifiants déjà préparés avant lui. C'est la règle du skill `typescript-to-go` : « conserver la valeur de chaque expression dans une déclaration locale avant de poursuivre l'évaluation suivante ».
+3. 🟡 **Cohérence du contrat.** `transformPrepared` renvoie un objet simple `{ before, operand }` en cas de succès, alors que le reste du transpileur renvoie des résultats `DEither` (`context.success(...)`, `DEither.isLeft`). Ça fonctionne, mais un `DEither.right("prepared-operand", { before, operand })` serait plus cohérent avec D-04. Ce n'est pas bloquant.
+4. ✅ **(corrigé, voir plus bas)** **À garder en tête pour l'étape 6** : `&&` et `||` sont traduits avec un résultat `bool`. En JavaScript, `a || b` renvoie **la valeur** de `a` ou de `b` (par exemple `0 || 5` vaut `5`). Les exercices n'utilisent `||` qu'entre des booléens (`one < 0 || two < 0`), donc c'est sans effet pour l'instant.
+
+#### Revue adversariale (18/11/2026)
+**But** : essayer de **casser** l'étape 5 avec des entrées TypeScript piégeuses. Chaque piège est transpilé dans son propre mini-projet, compilé, exécuté, puis comparé au **même code exécuté en JavaScript**. La base testée est l'étape 5 + `main` du 18/11.
+
+**Résultat : l'étape 5 tient. 25 pièges sur 29 donnent la même valeur qu'en JavaScript, et les 4 qui échouent viennent d'un code qui existait avant elle.**
+
+| Piège (TS) | JS | Go | |
+|---|---|---|---|
+| `1e308 * 10`, `1e308 + 1e308`, `1e308 + 1e308 + 1` | `Infinity` | `+Inf` | ✅ le dépassement est détecté et calculé à l'exécution |
+| `1e-320 * 1e-10`, `1e-400` | `0` | `0` | ✅ |
+| `0 / 0`, `x / 0`, `x / 0e5`, `x / 0 / 0` | `NaN`, `±Infinity` | idem | ✅ pas d'erreur Go « division by zero » |
+| `0 / 0 === 0 / 0` | `false` | `false` | ✅ |
+| `0 / x === 0` (x = -5, donne `-0`) | `true` | `true` | ✅ |
+| `0.1 + 0.2 === 0.3`, `0.1 + 0.2 + 0.3`, `0.1 * 0.1`, `1 / 3 * 3` | `false`, `0.6000000000000001`, `0.010000000000000002`, `1` | idem | ✅ les calculs entre littéraux faits par Go sont identiques à JavaScript |
+| `0x10 + 0b11`, `1_000 + 0.5`, `9007199254740993 + 0` | `19`, `1000.5`, `9007199254740992` | idem | ✅ |
+| `isPositive(x) && isBig(x)`, `||`, et le mélange `isBig(x) \|\| isPositive(x) && isBig(add(x, 10))` | | idem | ✅ chaque appel n'est évalué que si nécessaire, même imbriqué |
+| `add(add(x, 1), add(2, add(x, 3)))` | `8` | `8` | ✅ |
+| **`1e400`** (littéral seul) | `Infinity` | ❌ `undefined: Infinity` | **bug d'avant l'étape 5** : TypeScript donne le texte `"Infinity"` pour ce littéral, et `numericLiteral.ts` le recopie tel quel en Go |
+| **`x % 2`** | `1` | ❌ ne compile pas | **d'avant l'étape 5** : Go n'a pas de `%` sur les `float64` (il faut `math.Mod`) |
+| **`x << 1`** (et `&`, `\|`, `^`, `>>`) | `6` | ❌ ne compile pas | **d'avant l'étape 5** : les opérateurs binaires de JS s'appliquent à des entiers 32 bits, et Go les refuse sur les `float64` |
+| **`x \|\| y`** avec `y: number` | `5` | ❌ refusé à la transpilation | **d'avant l'étape 5** : voir la remarque 4 |
+
+**Remarque sur l'ordre d'évaluation (n° 2)** : le problème reste réel, mais il est **impossible à déclencher aujourd'hui**. Sans affectation, aucun argument ne peut modifier une variable lue avant lui. À corriger en même temps que les affectations (étape 6).
+
+**Nouveaux points** (sans lien avec l'étape 5, aucun exercice concerné) :
+- ✅ **`numericLiteral.ts`** : traduire un littéral qui vaut `Infinity` (`1e400`) en `math.Inf(1)`.
+- ✅ **`binary.ts`** : `%` doit devenir `math.Mod(a, b)`. `<<`, `>>`, `&`, `|` et `^` doivent passer par une conversion en entier 32 bits, comme JavaScript.
+
+#### Correction des 4 bugs (18/11/2026, commit `21a51b0` sur `etape-5-helper-preparation`)
+Les 4 échecs de la revue adversariale sont corrigés **sur la branche de l'étape 5**. C'est là que `binary.ts` a été réécrit, ce qui évite les conflits.
+
+| Bug | Correction | Fichier |
+|---|---|---|
+| `1e400` donne `undefined: Infinity` | un littéral qui vaut `Infinity` devient `math.Inf(1)` (avec `import "math"` dans le fichier) | `expression/numericLiteral.ts` |
+| `x % y` ne compile pas | `math.Mod(x, y)` : même règle de signe (celui du dividende) et de `NaN` que JavaScript | `expression/binary.ts` |
+| `&`, `\|`, `^`, `<<`, `>>`, `>>>` ne compilent pas | helpers partagés `JSBitwiseAnd`, `JSBitwiseOr`, `JSBitwiseXor`, `JSLeftShift`, `JSSignedRightShift`, `JSUnsignedRightShift` qui appliquent **ToInt32 / ToUint32** comme JavaScript (troncature, modulo 2³², `NaN` et `Infinity` donnent 0, décalage `& 31`) | `expression/javascriptNumber.ts` |
+| `x \|\| y` entre nombres | renvoie **la valeur** d'un opérande comme JavaScript (`0 \|\| 5` donne `5`, `NaN && 5` donne `NaN`) ; le membre droit n'est évalué que si nécessaire. Entre booléens, rien ne change. Avec des types mélangés (`boolean \|\| number`), le refus est explicite, car aucun type Go ne représente `number \| true` | `expression/binary.ts` |
+
+**Bonus trouvé en corrigeant** : si deux helpers partagés importaient le même paquet (`math` pour `JSNumberToString` et pour les opérateurs sur les bits), le fichier `shard_dependencies.go` contenait l'import **deux fois** et ne compilait pas. Les imports sont maintenant dédupliqués dans `build.ts`.
+
+**Vérifié** :
+- `tests/js-operators/` : **56 contrôles bit pour bit** contre les valeurs de Node, par exemple `-0 % 5` donne `-0`, `1e21 \| 0` donne `-559939584`, `1 << 33` donne `2`, `-1 >>> 0` donne `4294967295`, et `NaN && 5` donne `NaN` ;
+- sur la branche de l'étape 5 : tous les tests, `check 00`, les types et le lint (0 avertissement) ;
+- **intégration** (branche locale « étape 5 + `main` + `DString.to` ») : les 7 tests d'exécution passent, et un programme qui utilise `DString.to`, `|` et `%` ensemble compile avec un seul `import "math"`.
+
+La remarque 4 est donc traitée : `&&` / `||` entre nombres renvoient bien une valeur. Les remarques 2 (ordre d'évaluation) et 3 (contrat `DEither`) restent 🟡 pour plus tard.
 
 ---
 

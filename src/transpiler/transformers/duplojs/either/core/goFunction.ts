@@ -1,10 +1,6 @@
 import * as DCommon from "@duplojs/lang/common";
 import { GoAST } from "@go";
-import {
-	either2TypeIdentifier,
-	eitherFieldIdentifiers,
-	eitherTypeIdentifier,
-} from "./sharedDependency";
+import { eitherAnyTypeIdentifier, eitherFieldIdentifiers } from "./sharedDependency";
 
 /**
  * Petits constructeurs pour écrire les helpers Go génériques du domaine Either
@@ -21,19 +17,31 @@ export function typeParameter(identifier: GoAST.Identifier) {
 	});
 }
 
-/** `Either[T]`, dans le package `shard_dependencies`. */
-export function localEither(valueType: GoTypeNode) {
-	return GoAST.createGenericTypeReference({
-		typeReference: eitherTypeIdentifier,
-		typeArguments: DCommon.cast([valueType]),
+/** `EitherAny`, dans le package `shard_dependencies` (D-18). */
+export const localEitherAny = eitherAnyTypeIdentifier;
+
+/** `EitherAny{Tag: tag, Value: value}`, dans le package `shard_dependencies`. */
+export function localEitherAnyLiteral(tag: GoAST.Expression, value: GoAST.Expression) {
+	return GoAST.createStructLiteral({
+		typeReference: eitherAnyTypeIdentifier,
+		elements: [
+			GoAST.createKeyedElement({
+				key: eitherFieldIdentifiers.tag,
+				value: tag,
+			}),
+			GoAST.createKeyedElement({
+				key: eitherFieldIdentifiers.value,
+				value,
+			}),
+		],
 	});
 }
 
-/** `Either2[R, L]`, dans le package `shard_dependencies`. */
-export function localEither2(rightType: GoTypeNode, leftType: GoTypeNode) {
-	return GoAST.createGenericTypeReference({
-		typeReference: either2TypeIdentifier,
-		typeArguments: DCommon.cast([rightType, leftType]),
+/** `value.(T)` : lecture typée d'une valeur rangée dans un `any`. */
+export function assertType(value: GoAST.Expression, type: GoTypeNode) {
+	return GoAST.createTypeAssertionExpression({
+		target: value,
+		typeReference: type,
 	});
 }
 
@@ -76,6 +84,14 @@ export function returnValue(value: GoAST.Expression) {
 export function isRightCall(input: GoAST.Expression) {
 	return call(
 		select(select(input, eitherFieldIdentifiers.tag), GoAST.createIdentifier("IsRight")),
+		[],
+	);
+}
+
+/** `input.Tag.IsLeft()` */
+export function isLeftCall(input: GoAST.Expression) {
+	return call(
+		select(select(input, eitherFieldIdentifiers.tag), GoAST.createIdentifier("IsLeft")),
 		[],
 	);
 }

@@ -1,5 +1,5 @@
 import { type Transformer } from "@transformer";
-import { GoAST, GoPrinter } from "@go";
+import { GoAST } from "@go";
 import { TsAST } from "@typescript";
 import * as DArray from "@duplojs/lang/array";
 import * as DCommon from "@duplojs/lang/common";
@@ -8,11 +8,16 @@ import * as DGenerator from "@duplojs/lang/generator";
 import { SignatureKind } from "typescript/async";
 import { type BuildContext } from "../../../../context/build";
 import { expressionTransformers } from "../../../expression";
-import { analyzeEitherOfNode, transformTsType } from "../core/analysis";
-import { transformCallback } from "../core/callback";
+import { tsTypeToGo } from "../../../type/tsTypeToGo";
+import { analyzeEitherOfNode, eitherAnyGoType } from "../core/analysis";
+import { inferParameter, transformCallback } from "../core/callback";
+import { readEitherIssues } from "../core/issues";
+import { eitherAnyTypeIdentifier, eitherCoreDependency, eitherFieldIdentifiers } from "../core/sharedDependency";
+import { registerEitherTag } from "../core/tag";
 import { rightThenDependency, rightThenIdentifier } from "./sharedDependency";
 
-async function stepReturnTypeKey(step: TsAST.Expression, context: BuildContext) {
+/** Signature de l'étape : renvoie-t-elle un Either ? quel type Go reçoit-elle ? */
+async function readStep(step: TsAST.Expression, context: BuildContext) {
 	const { typeChecker } = context.transpilation;
 	const signature = DArray.first(
 		await typeChecker.getSignaturesOfType(
@@ -25,17 +30,82 @@ async function stepReturnTypeKey(step: TsAST.Expression, context: BuildContext) 
 		return context.error(step, "right-pipe-step-without-call-signature");
 	}
 
-	return DEither.rightPipe(
-		await transformTsType(await signature.getReturnType(), step, context),
-		(goType) => DEither.success(GoPrinter.renderNode(goType)),
-	);
+	const returnsEither = await readEitherIssues(await signature.getReturnType(), step, context);
+
+	if (DEither.isLeft(returnsEither) && !DEither.hasInformation(returnsEither, "none")) {
+		return returnsEither;
+	}
+
+	const parameter = DArray.first(await signature.getParameters());
+	const parameterType = parameter
+		? await tsTypeToGo(await typeChecker.getTypeOfSymbol(parameter), step, context)
+		: DEither.right("go-type", GoAST.builtinTypeReferences.any);
+
+	if (DEither.isLeft(parameterType)) {
+		return parameterType;
+	}
+
+	return DEither.success({
+		returnsEither: DEither.isRight(returnsEither),
+		parameterType: DEither.unwrapRight(parameterType),
+		hasParameter: parameter !== undefined,
+	});
 }
 
 /**
- * `DEither.rightPipe(r, f, g)` -> `RightThen(RightThen(r, f), g)`.
- * Limite (D-09.3) : chaque étape doit renvoyer le même type Go que l'entrée
- * (`Either[float64]` dans les exercices). Une étape qui renvoie une valeur brute
- * ou un autre type d'Either est refusée explicitement.
+ * Étape qui renvoie une **valeur brute** : DuploJS la range dans un `success`.
+ * `func(value T) EitherAny { return EitherAny{Tag: TagRightSuccess, Value: step(value)} }`
+ */
+function wrapRawStep(
+	step: GoAST.Expression,
+	parameterType: GoAST.TypeReference | GoAST.Type,
+	hasParameter: boolean,
+	context: BuildContext,
+) {
+	const value = context.generateIdentifier();
+
+	return GoAST.createFunctionLiteral({
+		arguments: [
+			GoAST.createFunctionArgument({
+				identifier: value,
+				type: parameterType,
+			}),
+		],
+		returnTypes: [eitherAnyGoType(context)],
+		body: GoAST.createBlockStatement({
+			statements: [
+				GoAST.createReturnStatement({
+					values: DCommon.cast([
+						GoAST.createStructLiteral({
+							typeReference: GoAST.createPackageTypeReference({
+								packageName: context.registerSharedDependency(eitherCoreDependency.value),
+								identifier: eitherAnyTypeIdentifier,
+							}),
+							elements: [
+								GoAST.createKeyedElement({
+									key: eitherFieldIdentifiers.tag,
+									value: registerEitherTag(context, "right", "success"),
+								}),
+								GoAST.createKeyedElement({
+									key: eitherFieldIdentifiers.value,
+									value: GoAST.createCallExpression({
+										callee: step,
+										arguments: hasParameter ? [value] : [],
+									}),
+								}),
+							],
+						}),
+					]),
+				}),
+			],
+		}),
+	});
+}
+
+/**
+ * `DEither.rightPipe(r, f, g)` -> `RightThen(RightThen(r, f), g)` (D-18).
+ * Chaque étape reçoit la valeur ouverte avec le type qu'elle déclare. Une étape
+ * qui renvoie une valeur brute est rangée dans un `success`, comme en DuploJS.
  */
 export async function rightPipeExpressionHandler(
 	node: TsAST.Node,
@@ -52,12 +122,6 @@ export async function rightPipeExpressionHandler(
 	if (DEither.isLeft(shape)) {
 		return shape;
 	}
-
-	if (shape.kind !== "either") {
-		return context.error(input, "right-pipe-on-either2-not-supported");
-	}
-
-	const inputKey = GoPrinter.renderNode(shape.goType);
 
 	const inputExpression = await DCommon.asyncPipe(
 		context.transform(input, expressionTransformers.value),
@@ -81,22 +145,18 @@ export async function rightPipeExpressionHandler(
 				result: inputExpression.result,
 			}),
 			async({ item, lastValue, next, exit }) => {
-				const stepKey = await DCommon.asyncPipe(stepReturnTypeKey(item, context), DEither.unwrapRight);
+				const stepShape = await DCommon.asyncPipe(readStep(item, context), DEither.unwrapRight);
 
-				if (DEither.isLeft(stepKey)) {
-					return exit(stepKey);
-				}
-
-				if (stepKey !== inputKey) {
-					return exit(context.error(item, "right-pipe-step-must-return-the-input-either-type"));
+				if (DEither.isLeft(stepShape)) {
+					return exit(stepShape);
 				}
 
 				const step = await DCommon.asyncPipe(
 					transformCallback(
 						{
 							node: item,
-							parameterTypes: [shape.rightValueType],
-							returnType: shape.goType,
+							parameterTypes: [inferParameter],
+							returnType: stepShape.returnsEither ? eitherAnyGoType(context) : undefined,
 						},
 						context,
 					),
@@ -107,6 +167,10 @@ export async function rightPipeExpressionHandler(
 					return exit(step);
 				}
 
+				const stepFunction = stepShape.returnsEither
+					? step.result
+					: wrapRawStep(step.result, stepShape.parameterType, stepShape.hasParameter, context);
+
 				return next({
 					before: DArray.concat(lastValue.before, step.before),
 					result: GoAST.createCallExpression({
@@ -114,7 +178,7 @@ export async function rightPipeExpressionHandler(
 							target: packageName,
 							identifier: rightThenIdentifier,
 						}),
-						arguments: [lastValue.result, step.result],
+						arguments: [lastValue.result, stepFunction],
 					}),
 				});
 			},

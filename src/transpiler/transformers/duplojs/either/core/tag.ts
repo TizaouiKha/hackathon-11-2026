@@ -7,6 +7,7 @@ import type { TranspilationContext } from "../../../../context/transpilation";
 import {
 	eitherCoreDependency,
 	eitherTagInformationTableIdentifier,
+	eitherTagIsLeftTableIdentifier,
 	eitherTagIsRightTableIdentifier,
 	eitherTagTypeIdentifier,
 } from "./sharedDependency";
@@ -72,19 +73,20 @@ function createTag(
 	side: EitherSide,
 	information: string,
 ) {
-	const isRightAssignment = side === "right"
-		? [
+	const sideTable = side === "right" ? eitherTagIsRightTableIdentifier : eitherTagIsLeftTableIdentifier;
+	const sideAssignment = side === "value"
+		? []
+		: [
 			GoAST.createAssignmentStatement({
 				targets: DCommon.cast([
 					GoAST.createIndexExpression({
-						target: eitherTagIsRightTableIdentifier,
+						target: sideTable,
 						index: identifier,
 					}),
 				]),
 				values: DCommon.cast([GoAST.createBooleanLiteral({ value: true })]),
 			}),
-		]
-		: [];
+		];
 
 	return createSharedDependency({
 		imports: [],
@@ -96,7 +98,7 @@ function createTag(
 			}),
 		],
 		init: [
-			...isRightAssignment,
+			...sideAssignment,
 			GoAST.createAssignmentStatement({
 				targets: DCommon.cast([
 					GoAST.createIndexExpression({

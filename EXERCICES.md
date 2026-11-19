@@ -102,19 +102,19 @@ Objet Fail (projet 04) :
 **Réponse** :
 - `number` devient `float64` (D-08) ;
 - l'addition utilise directement les deux paramètres grâce au helper de préparation (D-06) ;
-- `DEither.success` devient un littéral de struct `Either[float64]` (D-09) ;
+- `DEither.success` devient un littéral de struct `EitherAny` (D-18) ;
 - l'appel au niveau du module part dans `init()`, et `main.go` importe le package d'entrée avec `_`.
 
-**Go généré** (`add.ts.go`), avec la représentation Either de l'étape 3 (D-09) :
+**Go généré** (`add.ts.go`), avec `EitherAny` (D-18) :
 ```go
-func Sourced_add(Sourced_one float64, Sourced_two float64) (shard_dependencies.Either[float64]) {
-	return (shard_dependencies.Either[float64]{
+func Sourced_add(Sourced_one float64, Sourced_two float64) (shard_dependencies.EitherAny) {
+	return (shard_dependencies.EitherAny{
 		Tag: shard_dependencies.TagRightSuccess,
 		Value: Sourced_one + Sourced_two,
 	})
 }
 ```
-`DEither.success(x)` devient directement un littéral de struct : pas d'appel de fonction ni de variable intermédiaire.
+`DEither.success(x)` devient directement un littéral de struct : pas d'appel de fonction. Grâce au helper de préparation (étape 5), l'addition n'a plus de variables temporaires.
 
 **Fait / reste à faire** :
 - [x] corriger B-01. Cette correction est maintenant remplacée par l'étape 3, qui supprime `EitherSuccessOf` ;

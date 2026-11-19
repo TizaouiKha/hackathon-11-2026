@@ -4,11 +4,12 @@ import { createSharedDependency } from "@transformer";
 import { eitherFieldIdentifiers } from "../core/sharedDependency";
 import {
 	argument,
+	assertType,
 	call,
 	functionType,
 	genericFunction,
 	isRightCall,
-	localEither,
+	localEitherAny,
 	returnValue,
 	select,
 } from "../core/goFunction";
@@ -17,28 +18,23 @@ export const whenIsRightIdentifier = GoAST.createIdentifier("WhenIsRight");
 
 /**
  * ```go
- * func WhenIsRight[T any, V any, O any](
- *     input Either[T], onRight func(T) V, wrapValue func(V) O, wrapLeft func(Either[T]) O,
- * ) O {
+ * func WhenIsRight[T any, V any](input EitherAny, onRight func(T) V) EitherAny {
  *     if input.Tag.IsRight() {
- *         return wrapValue(onRight(input.Value))
+ *         return EitherAny{Tag: TagValue, Value: onRight(input.Value.(T))}
  *     }
- *     return wrapLeft(input)
+ *     return input
  * }
  * ```
- * `whenIsRight` renvoie « valeur brute | erreur » (D-16). Le type de sortie `O`
- * dépend de l'union TypeScript : le transpileur génère `wrapValue` (qui range la
- * valeur avec `TagValue`) et `wrapLeft` (qui recopie l'erreur dans `O`).
+ * `whenIsRight` renvoie « valeur brute | erreur » (D-16) : la valeur brute est
+ * rangée avec le tag réservé `TagValue`. Le handler enregistre `TagValue` avant
+ * d'utiliser ce helper, pour que la constante existe.
  */
 export const whenIsRightDependency = DCommon.memo(() => {
 	const valueType = GoAST.createIdentifier("T");
 	const rawType = GoAST.createIdentifier("V");
-	const outputType = GoAST.createIdentifier("O");
 	const input = GoAST.createIdentifier("input");
 	const onRight = GoAST.createIdentifier("onRight");
-	const wrapValue = GoAST.createIdentifier("wrapValue");
-	const wrapLeft = GoAST.createIdentifier("wrapLeft");
-	const inputType = localEither(valueType);
+	const openedValue = assertType(select(input, eitherFieldIdentifiers.value), valueType);
 
 	return createSharedDependency({
 		imports: [],
@@ -46,26 +42,34 @@ export const whenIsRightDependency = DCommon.memo(() => {
 		declarations: [
 			genericFunction({
 				name: whenIsRightIdentifier,
-				generic: [valueType, rawType, outputType],
+				generic: [valueType, rawType],
 				arguments: [
-					argument(input, inputType),
+					argument(input, localEitherAny),
 					argument(onRight, functionType([valueType], rawType)),
-					argument(wrapValue, functionType([rawType], outputType)),
-					argument(wrapLeft, functionType([inputType], outputType)),
 				],
-				returnType: outputType,
+				returnType: localEitherAny,
 				statements: [
 					GoAST.createIfStatement({
 						condition: isRightCall(input),
 						body: GoAST.createBlockStatement({
 							statements: [
-								returnValue(
-									call(wrapValue, [call(onRight, [select(input, eitherFieldIdentifiers.value)])]),
-								),
+								returnValue(GoAST.createStructLiteral({
+									typeReference: localEitherAny,
+									elements: [
+										GoAST.createKeyedElement({
+											key: eitherFieldIdentifiers.tag,
+											value: GoAST.createIdentifier("TagValue"),
+										}),
+										GoAST.createKeyedElement({
+											key: eitherFieldIdentifiers.value,
+											value: call(onRight, [openedValue]),
+										}),
+									],
+								})),
 							],
 						}),
 					}),
-					returnValue(call(wrapLeft, [input])),
+					returnValue(input),
 				],
 			}),
 		],
