@@ -9,6 +9,7 @@ import { createBuildContext } from "./context/build";
 import { createFileContext } from "./context/file";
 import type { TranspilationContext } from "./context/transpilation";
 import { sourceFileTransformers } from "./transformers";
+import { isTypeOnlyDeclaration } from "./transformers/declaration/typeOnly";
 import { createFile } from "./createFile";
 import { createSourcePackageLayout } from "./sourcePackage";
 
@@ -39,7 +40,9 @@ export async function transformSourceFile(
 				init: [],
 			}),
 			async({ item, lastValue, next, exit }) => {
-				if (TsAST.isImportDeclaration(item)) {
+				// Rien à produire en Go : les imports deviennent des imports de packages,
+				// et les types sont lus par le checker là où ils servent.
+				if (TsAST.isImportDeclaration(item) || isTypeOnlyDeclaration(item)) {
 					return next(lastValue);
 				}
 

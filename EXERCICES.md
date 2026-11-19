@@ -8,7 +8,7 @@ Les décisions transverses sont dans [DECISIONS.md](DECISIONS.md) (références 
 | Projet | Sujet principal | État |
 |---|---|---|
 | [00](#projet-00) | Addition, appel de `DEither.success`, préparation d'un appel | ✅ |
-| [01](#projet-01) | Union `Success \| Fail`, `if`, `isRight`, `print` | ⬜ |
+| [01](#projet-01) | Union `Success \| Fail`, `if`, `isRight`, `print` | ✅ |
 | [02](#projet-02) | `whenIsRight` + fonction passée en argument | ⬜ |
 | [03](#projet-03) | `pipe` + forme curryfiée | ⬜ |
 | [04](#projet-04) | Plusieurs `return`, `fail()` | ⬜ |
@@ -65,22 +65,28 @@ Objet Fail (projet 04) :
 
 ## Inventaire des transformers
 
-✔ = existe déjà dans le code de départ.
+✔ = implémenté et couvert par les tests.
 
 **Instructions**
 - ✔ appel autonome · ✔ `return expr` · ✔ bloc
-- `const` / `let` (variable locale et variable du module, D-07) · `if` / `else` · `return` sans valeur
+- ✔ `const` / `let` avec un identifiant et un initialiseur (variable locale et variable du module, D-07) · ✔ `if` / `else` · ✔ `return` sans valeur
 
 **Expressions**
 - ✔ identifiant (y compris entre fichiers) · ✔ littéral numérique → `float64` · ✔ binaire arithmétique
-- comparaisons, `||`, `&&` (le mapping est déjà dans `binary.ts`, à tester) · littéral de chaîne · ternaire · fonction fléchée · littéral de tableau · littéral d'objet (handlers de `matchInformation`) · `await`
+- ✔ comparaisons, `||`, `&&` · ✔ littéral de chaîne · ✔ unaires · ✔ parenthèses · ✔ ternaire · ✔ fonction fléchée · ✔ littéral de tableau/tuple · littéral d'objet (handlers de `matchInformation`) · `await`
 
 **Types**
 - ✔ `number`
-- `string` · tableau `T[]` · tuple `[A, B, C]` · unions d'`Either` · `Promise<T>` · type de retour inféré (via le checker)
+- ✔ `string` · ✔ tableau `T[]` · ✔ tuple `[A, B, C]` · ✔ unions d'`Either` · ✔ `Promise<T>` · ✔ type de retour inféré (via le checker)
 
 **Paramètres**
-- identifiant simple ✔ · déstructuration de tuple `[a, b, c]`
+- identifiant simple ✔ · déstructuration de tuple `[a, b, c]` ✔
+
+**Validation de l'étape 6** : `tests/language-basics/` couvre 32 cas à
+l'exécution, dont les variables module/locales, les deux branches d'un ternaire,
+les deux formes de fonction fléchée, les tableaux et les tuples homogènes et
+hétérogènes. Le projet 01 passe ; les projets suivants sont maintenant bloqués
+par `DArray.map` ou `DArray.coalescing` (étape 8).
 
 **Domaine DuploJS**
 - Either :
@@ -101,26 +107,24 @@ Objet Fail (projet 04) :
 
 **Réponse** :
 - `number` devient `float64` (D-08) ;
-- l'addition passe par des variables temporaires pour les opérandes (mécanisme `before`) ;
-- `DEither.success` devient la shared dependency `EitherSuccessOf[T]`, qui renvoie `EitherSuccess[T]` ;
+- l'addition utilise directement les deux paramètres grâce au helper de préparation (D-06) ;
+- `DEither.success` devient un littéral de struct `EitherAny` (D-18) ;
 - l'appel au niveau du module part dans `init()`, et `main.go` importe le package d'entrée avec `_`.
 
 **Go généré** (`add.ts.go`), avec `EitherAny` (D-18) :
 ```go
 func Sourced_add(Sourced_one float64, Sourced_two float64) (shard_dependencies.EitherAny) {
-	Generated_4 := Sourced_one
-	Generated_5 := Sourced_two
 	return (shard_dependencies.EitherAny{
 		Tag: shard_dependencies.TagRightSuccess,
-		Value: Generated_4 + Generated_5,
+		Value: Sourced_one + Sourced_two,
 	})
 }
 ```
-`DEither.success(x)` devient directement un littéral de struct : pas d'appel de fonction. Les 2 variables temporaires disparaîtront avec l'étape 5 (helper de préparation), pas encore mergée.
+`DEither.success(x)` devient directement un littéral de struct : pas d'appel de fonction. Grâce au helper de préparation (étape 5), l'addition n'a plus de variables temporaires.
 
 **Fait / reste à faire** :
 - [x] corriger B-01. Cette correction est maintenant remplacée par l'étape 3, qui supprime `EitherSuccessOf` ;
-- [ ] (étape 5, D-06) ne plus préparer les identifiants ou littéraux.
+- [x] (étape 5, D-06) utiliser directement les identifiants et littéraux du projet 00.
 
 **État** : ✅ `./.commands/check.sh 00` passe (compile, s'exécute, sortie identique : rien).
 
@@ -139,9 +143,10 @@ func Sourced_add(Sourced_one float64, Sourced_two float64) (shard_dependencies.E
 - `print` passe par `json.Marshal` puis l'affichage (à vérifier par rapport à la sortie TS) ;
 - `const result` est déclaré au niveau du module (D-07).
 
-**Go visé** : _à remplir_
+**Go obtenu** : `result` est une variable de package initialisée dans `init()`,
+puis le `if` appelle la méthode de test du tag et le printer partagé.
 
-**État** : ⬜
+**État** : ✅ `./.commands/check.sh 01` passe (transpilation, compilation et sortie identique à TypeScript).
 
 ---
 
@@ -250,10 +255,11 @@ func Sourced_add(Sourced_one float64, Sourced_two float64) (shard_dependencies.E
 
 **Problèmes posés** : collection de calculs ; tableau de tuples ; déstructuration dans un paramètre.
 
-**Réponse prévue** :
-- le tuple devient `[3]float64` (taille fixe, pas d'allocation) ;
-- le tableau devient `[][3]float64` ;
-- la déstructuration devient un paramètre `p [3]float64` suivi de `one, two, divisor := p[0], p[1], p[2]` au début du corps.
+**Réponse prévue** (mise à jour par D-18.5) :
+- le tuple devient **`[]float64`** (une slice, comme un tableau JS ; plus `[3]float64`) ;
+- le tableau devient `[][]float64` ;
+- la déstructuration devient un paramètre `p []float64` suivi de `one, two, divisor := p[0], p[1], p[2]` au début du corps (étape 6) ;
+- les deux `map` (avec données, puis curryfié dans un `pipe` avec `whenIsRightOtherwise(DString.to, …)` comme callback) sont **déjà traduits et vérifiés** contre l'affichage de Node (`tests/maps-advanced/`). Il manque `const`, la fonction fléchée, la déstructuration et le littéral `"échec"` (étape 6).
 
 **Go visé** : _à remplir_
 
@@ -268,8 +274,9 @@ func Sourced_add(Sourced_one float64, Sourced_two float64) (shard_dependencies.E
 **Problème posé** : regrouper des résultats et échouer dès qu'un seul échoue.
 
 **Réponse prévue** : le helper `Group(rs)` boucle sur les résultats, s'arrête au premier `left` et le renvoie ; sinon, il construit le slice des valeurs.
-- **Type de retour** : `Success<number[]> | Left<…, number>`. Le succès est un tableau et l'erreur un nombre, donc on utilise **`Either2[[]float64, float64]`** (D-09.2). C'est le premier projet qui en a besoin.
-- Point à clarifier : quelle gauche est renvoyée (la première ?). À vérifier dans la source de `@duplojs/lang`.
+- **Type de retour** : `Success<number[]> | Left<…, number>`. Depuis D-18, c'est simplement un **`EitherAny`** (`Either2` n'existe plus) : la valeur est un `[]float64` pour le succès, un `float64` pour la gauche, et chaque lecteur l'ouvre avec le type que TypeScript connaît.
+- `calculations` est un `[]EitherAny` (`DArray.map` qui produit des Either : vérifié dans `tests/maps-advanced/`).
+- Point à clarifier : quelle gauche est renvoyée (la première ?). À vérifier dans la source de `@duplojs/lang` (étape 7).
 
 **Go visé** : _à remplir_
 

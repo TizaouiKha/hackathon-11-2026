@@ -8,6 +8,12 @@ import { sharedExpressionTransformers } from "../shared";
 import { binaryExpressionTransformer } from "./binary";
 import { nullishLiteralTransformer } from "./nullish";
 import { createAdaptedExpressionTransformer } from "./adapt";
+import { stringLiteralTransformer } from "./stringLiteral";
+import { unaryExpressionTransformer } from "./unary";
+import { parenthesizedExpressionTransformer } from "./parenthesized";
+import { conditionalExpressionTransformer } from "./conditional";
+import { arrowFunctionTransformer } from "./function";
+import { arrayLiteralExpressionTransformer } from "./arrayLiteral";
 
 /** Transformeurs bruts : chacun produit le Go du type TS de son expression. */
 export const rawExpressionTransformers = DCommon.memo(
@@ -17,6 +23,12 @@ export const rawExpressionTransformers = DCommon.memo(
 		nullishLiteralTransformer,
 		identifierTransformer,
 		numericLiteralTransformer,
+		stringLiteralTransformer,
+		parenthesizedExpressionTransformer,
+		unaryExpressionTransformer,
+		conditionalExpressionTransformer,
+		arrowFunctionTransformer,
+		arrayLiteralExpressionTransformer,
 		binaryExpressionTransformer,
 	],
 );
