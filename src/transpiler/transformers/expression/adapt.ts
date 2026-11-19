@@ -13,6 +13,7 @@ import {
 } from "../duplojs/either/core/sharedDependency";
 import { registerEitherTag, valueInformation } from "../duplojs/either/core/tag";
 import { asTyped, needsConversion } from "./javascriptObjects";
+import { convertStructurally } from "./structuralConversion";
 
 /**
  * Adaptation des expressions aux points de narrowing (D-18, phase 2).
@@ -101,9 +102,24 @@ async function producedType(node: TsAST.Expression, context: BuildContext) {
 	return classify(await typeChecker.getTypeAtLocation(node), node, context);
 }
 
+/**
+ * `const { name } = user` : TypeScript donne comme type « attendu » la forme du
+ * motif (`{ name: any }`). Ce n'est pas un vrai type cible : on l'ignore (D-21).
+ */
+function initializesBindingPattern(node: TsAST.Expression) {
+	const { parent } = node;
+
+	return TsAST.isVariableDeclaration(parent)
+		&& parent.initializer === node
+		&& !parent.type
+		&& (TsAST.isObjectBindingPattern(parent.name) || TsAST.isArrayBindingPattern(parent.name));
+}
+
 async function targetType(node: TsAST.Expression, context: BuildContext) {
 	const { typeChecker } = context.transpilation;
-	const expected = await classify(await typeChecker.getContextualType(node), node, context);
+	const expected = initializesBindingPattern(node)
+		? undefined
+		: await classify(await typeChecker.getContextualType(node), node, context);
 
 	if (expected && expected.kind !== "any") {
 		return expected;
@@ -138,6 +154,16 @@ export async function adaptExpression(
 ): Promise<GoAST.Expression | undefined> {
 	const produced = await producedType(node, context);
 	const target = produced && await targetType(node, context);
+
+	// Deux objets de formes différentes (`User` passé à `{ name: string }`) :
+	// l'objet temporaire, construit à la compilation (D-21).
+	if (produced?.kind === "concrete" && target?.kind === "concrete") {
+		return convertStructurally({
+			value: expression,
+			source: produced.type,
+			target: target.type,
+		}, node, context);
+	}
 
 	if (!produced || !target || produced.kind === target.kind) {
 		return undefined;

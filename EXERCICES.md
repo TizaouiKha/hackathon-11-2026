@@ -80,7 +80,7 @@ Objet Fail (projet 04) :
 - ✔ comparaisons, `||`, `&&` · ✔ littéral de chaîne · ✔ unaires · ✔ parenthèses · ✔ ternaire · ✔ fonction fléchée · ✔ littéral de tableau/tuple · ✔ littéral d'objet des handlers de `matchInformation` · ✔ adaptation au narrowing et élargissement vers un Either (D-18.2)
 - ✔ accès à une propriété et à un élément · ✔ `.length` · ✔ littéral d'objet · ✔ template string · ✔ `typeof` · ✔ `??` · ✔ `Math.*` (D-19)
 - ✔ `true` / `false` · ✔ objet `any` utilisé comme objet typé (`JSAs`) · ✔ propriété lue sur un `any` (`JSGetProperty`) (D-20)
-- ⬜ **objet plus grand passé à un type plus petit** (`test(user)` avec `test(arg: { name: string })`) : objet temporaire à générer (D-21, prochaine étape)
+- ✔ **objet plus grand passé à un type plus petit** (`test(user)` avec `test(arg: { name: string })`) : objet temporaire construit à la compilation, y compris imbriqué et tableau d'objets (D-21)
 - ⬜ `?.` · ⬜ `await` (projet 10)
 
 **Types**

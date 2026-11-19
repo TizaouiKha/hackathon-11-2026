@@ -26,7 +26,7 @@ Chaque étape indique : **le but**, **ce qu'il faut avoir lu**, **ce qu'il faut 
 | 9 | [Valider les projets 01 → 09](#étape-9--valider-les-projets-01--09) | 6, 7, 8 | tout le monde | ✅ les 10 projets (00 à 09) passent |
 | 10 | [Projet 10 (asynchrone)](#étape-10--projet-10-asynchrone) | 9 | *(à remplir)* | 🟨 en cours |
 | 11 | [Performance et finitions](#étape-11--performance-et-finitions) | 9 | | ⬜ |
-| 12 | [Couvrir le TypeScript courant](#étape-12--couvrir-le-typescript-courant-au-delà-des-exercices) | 6 | Claude | 🟨 D-19 et D-20 faits ; **D-21 (objet temporaire) à faire** |
+| 12 | [Couvrir le TypeScript courant](#étape-12--couvrir-le-typescript-courant-au-delà-des-exercices) | 6 | Claude | 🟨 D-19, D-20 et D-21 faits ; suite : R-01 n° 2, `?.`, méthodes |
 
 ```
 3 (Either) ──┐
@@ -500,20 +500,16 @@ Go typé et applique un assignateur propre à chaque champ.
 |---|---|---|
 | D-19 | propriétés, éléments, objets littéraux, affectations, boucles, `switch`, template strings, `typeof`, `??`, `Math.*`, déstructuration, `group` sur un objet | ✅ (PR #17) |
 | D-20 | objet `any` utilisé comme objet typé (`JSAs`), propriété lue sur un `any` (`JSGetProperty`), `true` / `false`, déclaration typée des variables locales | ✅ (branche `objets-any`) |
-| **D-21** | **objet plus grand passé à un type plus petit** (`test(user)` avec `test(arg: { name: string })`) : générer l'**objet temporaire** à la compilation | ⬜ **à faire, prochaine priorité** |
+| **D-21** | **objet plus grand passé à un type plus petit** (`test(user)` avec `test(arg: { name: string })`) : générer l'**objet temporaire** à la compilation | ✅ (branche `d21-objet-temporaire`) |
 
-**D-21 en détail** (voir `DECISIONS.md` et `docs/objets-sous-types-et-any.md`) :
-1. dans l'adaptateur (`expression/adapt.ts`), quand l'objet produit et l'objet attendu sont deux structs différents, construire le struct attendu en copiant chaque champ par nom (`user.Sourced_name`) ;
-2. évaluer la source une seule fois (variable temporaire si ce n'est pas un identifiant) ;
-3. traiter récursivement les objets imbriqués, et les tableaux d'objets (nouvelle slice) ;
-4. champ facultatif côté cible : la valeur, ou `undefined` si la source ne l'a pas ;
-5. test d'exécution contre Node : le cas du prof, un objet imbriqué, un tableau d'objets.
+**D-21 en détail** (voir `DECISIONS.md` et `docs/objets-sous-types-et-any.md`) : `expression/structuralConversion.ts` construit l'objet attendu champ par champ (récursif, tableaux d'objets, champ facultatif → `undefined`, source évaluée une fois). Test : `tests/structural-objects/`. Différence assumée : un objet renvoyé sous le type plus petit n'affiche que les champs de ce type.
 
 **Reste à traiter ensuite** (aujourd'hui refusé avec une erreur claire) :
 
 | Construction | Piste |
 |---|---|
-| ordre d'évaluation avec des variables, `f(x, change())` (R-01, n° 2) | copier `x` dans une variable avant d'évaluer `change()`. **Possible maintenant** que les affectations existent : à corriger en priorité après D-21 |
+| ordre d'évaluation avec des variables, `f(x, change())` (R-01, n° 2) | copier `x` dans une variable avant d'évaluer `change()`. **Possible maintenant** que les affectations existent : **prochaine priorité** |
+| objet passé à un `Record<string, T>` (struct → `map`) | prolonger D-21 : une `map` remplie champ par champ |
 | `user?.name`, `values?.[0]` | `JSIsNullish` sur la cible, puis `undefined` ou la lecture |
 | méthodes des tableaux et des chaînes (`values.map`, `text.trim`) | les traduire vers les helpers `DArray` / `DString` existants |
 | `DString.split`, `replace`, `test` | le handler générique `duplojs/string/core/stringFunction.ts` ; regex : la syntaxe Go diffère |
