@@ -8,7 +8,7 @@ Les décisions transverses sont dans [DECISIONS.md](DECISIONS.md) (références 
 | Projet | Sujet principal | État |
 |---|---|---|
 | [00](#projet-00) | Addition, appel de `DEither.success`, préparation d'un appel | ✅ |
-| [01](#projet-01) | Union `Success \| Fail`, `if`, `isRight`, `print` | ⬜ |
+| [01](#projet-01) | Union `Success \| Fail`, `if`, `isRight`, `print` | ✅ |
 | [02](#projet-02) | `whenIsRight` + fonction passée en argument | ⬜ |
 | [03](#projet-03) | `pipe` + forme curryfiée | ⬜ |
 | [04](#projet-04) | Plusieurs `return`, `fail()` | ⬜ |
@@ -65,22 +65,28 @@ Objet Fail (projet 04) :
 
 ## Inventaire des transformers
 
-✔ = existe déjà dans le code de départ.
+✔ = implémenté et couvert par les tests.
 
 **Instructions**
 - ✔ appel autonome · ✔ `return expr` · ✔ bloc
-- `const` / `let` (variable locale et variable du module, D-07) · `if` / `else` · `return` sans valeur
+- ✔ `const` / `let` avec un identifiant et un initialiseur (variable locale et variable du module, D-07) · ✔ `if` / `else` · ✔ `return` sans valeur
 
 **Expressions**
 - ✔ identifiant (y compris entre fichiers) · ✔ littéral numérique → `float64` · ✔ binaire arithmétique
-- comparaisons, `||`, `&&` (le mapping est déjà dans `binary.ts`, à tester) · littéral de chaîne · ternaire · fonction fléchée · littéral de tableau · littéral d'objet (handlers de `matchInformation`) · `await`
+- ✔ comparaisons, `||`, `&&` · ✔ littéral de chaîne · ✔ unaires · ✔ parenthèses · ✔ ternaire · ✔ fonction fléchée · ✔ littéral de tableau/tuple · littéral d'objet (handlers de `matchInformation`) · `await`
 
 **Types**
 - ✔ `number`
-- `string` · tableau `T[]` · tuple `[A, B, C]` · unions d'`Either` · `Promise<T>` · type de retour inféré (via le checker)
+- ✔ `string` · ✔ tableau `T[]` · ✔ tuple `[A, B, C]` · ✔ unions d'`Either` · ✔ `Promise<T>` · ✔ type de retour inféré (via le checker)
 
 **Paramètres**
-- identifiant simple ✔ · déstructuration de tuple `[a, b, c]`
+- identifiant simple ✔ · déstructuration de tuple `[a, b, c]` ✔
+
+**Validation de l'étape 6** : `tests/language-basics/` couvre 32 cas à
+l'exécution, dont les variables module/locales, les deux branches d'un ternaire,
+les deux formes de fonction fléchée, les tableaux et les tuples homogènes et
+hétérogènes. Le projet 01 passe ; les projets suivants sont maintenant bloqués
+par `DArray.map` ou `DArray.coalescing` (étape 8).
 
 **Domaine DuploJS**
 - Either :
@@ -137,9 +143,10 @@ func Sourced_add(Sourced_one float64, Sourced_two float64) (shard_dependencies.E
 - `print` passe par `json.Marshal` puis l'affichage (à vérifier par rapport à la sortie TS) ;
 - `const result` est déclaré au niveau du module (D-07).
 
-**Go visé** : _à remplir_
+**Go obtenu** : `result` est une variable de package initialisée dans `init()`,
+puis le `if` appelle la méthode de test du tag et le printer partagé.
 
-**État** : ⬜
+**État** : ✅ `./.commands/check.sh 01` passe (transpilation, compilation et sortie identique à TypeScript).
 
 ---
 
