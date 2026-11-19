@@ -548,13 +548,13 @@ Non couvert : les `Map` JavaScript (`new Map()`) donnent une erreur claire (`rec
 
 **Vérifié** : `tests/any-objects/` (11 cas, les écarts ci-dessus vérifiés tels quels), plus les autres tests d'exécution, les projets 00 à 09, `tsc`, les types et le lint.
 
-### D-21 · Objet plus grand passé à un type plus petit : l'objet temporaire — 🟨 décidé, à faire
+### D-21 · Objet plus grand passé à un type plus petit : l'objet temporaire — ✅ (19/11/2026, branche `d21-objet-temporaire`)
 
 **Le cas** (posé par le prof) : `function test(arg: { name: string })` appelée avec un `User` complet (`{ id, name, email, isActive }`).
 
 - **TypeScript accepte** : son typage est *structurel*. `User` a au moins un `name`, donc il convient.
 - **Go refuse** : `struct{ id; name; email; isActive }` et `struct{ name }` sont deux types différents. Le `go build` échoue.
-- **Aujourd'hui** : l'adaptateur (D-18.2) ne convertit qu'un `any` vers un objet typé (`JSAs`, D-20). Entre deux structs connus, il ne fait rien.
+- **Avant D-21** : l'adaptateur (D-18.2) ne convertissait qu'un `any` vers un objet typé (`JSAs`, D-20). Entre deux structs connus, il ne faisait rien.
 
 **Choix : l'objet temporaire, construit à la compilation.** Les deux formes sont connues de TypeScript avant l'exécution. Le transpileur écrit donc directement un struct littéral qui ne contient que les champs attendus :
 ```go
@@ -568,12 +568,20 @@ Sourced_test(struct{ Sourced_name string }{
 - impossible d'échouer à l'exécution, puisque TS a déjà vérifié que les champs existent ;
 - on ne copie que ce que la fonction peut voir (TS lui interdit le reste).
 
-**À implémenter** (dans l'adaptateur, `expression/adapt.ts`) :
-1. produit et cible sont deux **structs** dont le rendu Go diffère : construire le struct de la cible, champ par champ, en lisant chaque champ par nom sur la source (`source.Sourced_x`). La source est placée dans une variable temporaire si ce n'est pas un simple identifiant, pour ne l'évaluer qu'une fois ;
-2. un champ lui-même objet : même règle, **récursivement** (`{ leader: { name } }`) ;
-3. un champ tableau d'objets (`User[]` vers `{ name: string }[]`) : nouvelle slice, élément par élément. C'est le seul cas qui alloue ;
-4. un champ facultatif (`any` côté cible) : la valeur de la source, ou `undefined` si elle n'a pas ce champ ;
-5. test d'exécution comparé à Node : le cas du prof, un objet imbriqué, un tableau, et un objet passé à un `Record`.
+**Implémenté** : `expression/structuralConversion.ts`, appelé par l'adaptateur (`expression/adapt.ts`) quand le type produit et le type attendu sont tous les deux concrets.
+1. deux **structs** dont le rendu Go diffère : struct littéral de la cible, chaque champ lu par nom sur la source (`source.Sourced_x`) ;
+2. champ lui-même objet : même règle, **récursivement** (`{ leader: { name } }`) ;
+3. tableau d'objets (`User[]` vers `{ name: string }[]`) : nouvelle slice, élément par élément, dans une fonction littérale. C'est le seul cas qui alloue ;
+4. champ facultatif attendu (`any` en Go) absent de la source : `JSUndefined{}`, comme JS ;
+5. source qui n'est ni un nom ni un champ de nom (`makeUser()`) : passée en paramètre d'une fonction littérale `func(source S) T { return … }(valeur)`, donc **évaluée une seule fois** ;
+6. garde-fou : seulement struct → struct et `[]struct` → `[]struct`. Une cible générique (`any`, `[]any`) ou une `map` reçoit la valeur telle quelle.
+7. `const { name: label } = user` : TypeScript donne comme type « attendu » de `user` la forme du motif (`{ name: any }`). Ce n'est pas une vraie cible : l'adaptateur l'ignore (sinon il copie dans un objet de `any`, et `label + ":"` ne compile plus).
+
+**Différence assumée** : l'objet temporaire n'a **que** les champs du type attendu. Si la fonction **renvoie** cet objet (`describe(person) { return person }`, ou un type de retour plus petit `summary(person: User): { name: string }`) et qu'on l'affiche, Go montre `{ name: 'John Doe' }` alors que Node montre l'objet complet. Le programme ne peut pas lire les autres champs (TS l'interdit) : seul l'affichage diffère.
+
+**Pas encore couvert** : un objet passé à un `Record<string, T>` (struct → `map`), et une cible union d'objets.
+
+**Vérifié** : `tests/structural-objects/` (7 cas : le cas du prof, objet imbriqué, tableau d'objets via `DArray.map`, champ facultatif absent, source évaluée une fois avec un compteur, type de retour plus petit, déstructuration), plus tous les tests d'exécution, les projets 00 à 10, `tsc`, les types et le lint.
 
 **Lien avec D-20** : c'est la même idée que `JSAs`, mais calculée à la compilation. `JSAs` reste nécessaire quand la forme de départ est inconnue (`any`).
 

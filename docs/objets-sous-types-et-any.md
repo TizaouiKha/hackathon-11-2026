@@ -134,7 +134,9 @@ Pour un **tableau** d'objets (`User[]` passé à `{ name: string }[]`), il faut 
 | Même forme exacte (`User` passé à `User`) | ✅ marche |
 | Lire `arg.name` dans la fonction | ✅ `arg.Sourced_name`, accès direct |
 | Objet `any` utilisé comme `User` | ✅ marche (`JSAs`, voir § 6) |
-| **Objet plus grand passé à un type plus petit** (`User` → `{ name }`) | ⬜ **prochaine étape** : générer l'objet temporaire (D-21) |
+| **Objet plus grand passé à un type plus petit** (`User` → `{ name }`) | ✅ objet temporaire (D-21), test `tests/structural-objects/` |
+
+**Une seule différence visible** : si la fonction **renvoie** l'objet reçu et qu'on l'affiche, Go montre seulement `{ name: 'John Doe' }` (l'objet temporaire), Node l'objet complet. Le programme, lui, ne peut pas lire les autres champs : TypeScript l'interdit.
 
 ---
 
@@ -174,7 +176,7 @@ Et pour lire `raw.name` directement sur un `any`, le helper `JSGetProperty` cher
 | TS connaît la forme de départ ? | ✅ oui | ❌ non (`any`) |
 | Quand construit-on l'objet attendu ? | **à la compilation** (objet temporaire écrit par le transpileur) | **à l'exécution** (`JSAs`) |
 | Coût | une copie de cases | une copie + une recherche par nom |
-| État | ⬜ prochaine étape (D-21) | ✅ fait (D-20) |
+| État | ✅ fait (D-21) | ✅ fait (D-20) |
 
 ---
 
