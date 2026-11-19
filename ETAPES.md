@@ -23,7 +23,7 @@ Chaque étape indique : **le but**, **ce qu'il faut avoir lu**, **ce qu'il faut 
 | 6 | [Transformers de base du langage](#étape-6--transformers-de-base-du-langage) | 5 | Wilbour | ✅ (PR #14) |
 | 7 | [Domaine Either (handlers)](#étape-7--domaine-either) | 3, 5 | Claude, puis Mrlbe1 | ✅ (`group` : PR #15) |
 | 8 | [Domaines Common / Array / String](#étape-8--domaines-common--array--string) | 4, 5 | Claude | ✅ 8a (`pipe`, formes curryfiées), 8b (`DString.*`, `DArray.map`, `DArray.coalescing`, D-18.4 et D-18.5) ; `print` fait à l'étape 4 |
-| 9 | [Valider les projets 01 → 09](#étape-9--valider-les-projets-01--09) | 6, 7, 8 | tout le monde | 🟨 00 à 08 passent ; le 09 attend `group` |
+| 9 | [Valider les projets 01 → 09](#étape-9--valider-les-projets-01--09) | 6, 7, 8 | tout le monde | ✅ les 10 projets (00 à 09) passent |
 | 10 | [Projet 10 (asynchrone)](#étape-10--projet-10-asynchrone) | 9 | | ⬜ |
 | 11 | [Performance et finitions](#étape-11--performance-et-finitions) | 9 | | ⬜ |
 
@@ -298,7 +298,7 @@ Les règles à reproduire :
 
 **À lire avant** : étape 5 terminée, **l'étape 3b** (`tsTypeToGo`, l'adaptateur, `transformCallback`), et la section « Inventaire des transformers » de `EXERCICES.md`.
 
-**État mesuré** (19/11, après la PR #14) : `check.sh` passe pour les projets **00 à 08**. Le 09 attend `DEither.group` (étape 7), le 10 l'asynchrone (`rightAsyncPipe`, étapes 7 et 10).
+**État mesuré** (19/11, après les PR #14 et #15) : `check.sh` passe pour les projets **00 à 09**. Le 10 attend l'asynchrone (`rightAsyncPipe`, étapes 7 et 10).
 
 **À faire** : un transformer par ligne, à tester au fur et à mesure. **Les types Go viennent toujours de `tsTypeToGo`**, jamais d'une règle écrite dans ton transformer.
 
@@ -426,6 +426,8 @@ Chaque fonction devient un **helper Go générique écrit une fois à la main** 
 ---
 
 ## Étape 9 — Valider les projets 01 → 09
+
+> ✅ **Faite** (19/11, après les PR #14 et #15). `./.commands/check.sh NN` passe pour **les 10 projets, de 00 à 09** : transpilation, compilation Go, puis sortie **identique** à celle de TypeScript. Le Go obtenu pour chaque projet est dans `EXERCICES.md`.
 
 **But** : que chaque projet affiche exactement la même chose qu'en TypeScript.
 
