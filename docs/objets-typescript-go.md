@@ -99,7 +99,7 @@ Pour `quelqueChose.champ`, le transpileur demande à TypeScript **le type de `qu
 | chaîne | `text.length` | `JSStringLength(text)` (compte comme JS : `"😀".length` vaut 2) |
 | dictionnaire (`Record<string, number>`) | `scores[key]` | `JSMapGet(scores, key)` (renvoie `undefined` si la clé n'existe pas) |
 
-Le cas du **dictionnaire** est le seul où l'on cherche une clé pendant l'exécution, comme en JS. C'est normal : ses clés ne sont connues qu'à l'exécution.
+Le cas du **dictionnaire** est le seul où l'on cherche une clé pendant l'exécution, comme en JS. C'est normal : ses clés ne sont connues qu'à l'exécution. (D'où vient `JSMapGet` ? Voir le § 4 bis.)
 
 ```ts
 const scores: Record<string, number> = { ada: 36, bob: 7 };
@@ -112,6 +112,88 @@ scores := map[string]float64{"ada": 36, "bob": 7}
 
 shard_dependencies.JSMapGet(scores, key) // 36, 7, ou undefined pour "eve"
 ```
+
+---
+
+## 4 bis. D'où sortent `JSMapGet`, `JSStringLength`… ?
+
+Ce sont des **dépendances partagées** (*shared dependencies*) : des petites fonctions Go, écrites **une seule fois** dans le transpileur, que le code généré appelle quand Go ne fait pas exactement comme JavaScript.
+
+### Où elles atterrissent : le paquet `shard_dependencies`
+
+Quand on transpile un projet, on obtient un dossier `dist/` :
+
+```
+dist/
+├── main.go                     point d'entrée
+├── index.ts/index.ts.go        un paquet Go par fichier TS (le code de l'utilisateur)
+├── add.ts/add.ts.go
+└── shard_dependencies/         la « boîte à outils » commune
+    └── shard_dependencies.go   JSMapGet, JSStringLength, EitherAny, Inspect…
+```
+
+Le code de l'utilisateur l'importe et l'appelle par son nom de paquet :
+
+```go
+import "duplojs.local/transpiled/shard_dependencies"
+
+shard_dependencies.JSMapGet(scores, key)
+```
+
+**Seuls les helpers réellement utilisés sont copiés** dans `shard_dependencies.go`. Si aucun code ne lit de `Record`, `JSMapGet` n'y figure pas.
+
+### Où elles sont écrites : dans le transpileur
+
+`JSMapGet` est écrit dans **`src/transpiler/transformers/expression/javascriptValues.ts`**. Ce fichier TypeScript ne s'exécute pas tel quel : il **construit le code Go** du helper (avec l'AST Go), et le range dans une dépendance partagée (`javascriptValuesDependency`).
+
+Voici le Go qu'il produit, tel qu'on le retrouve dans `dist/shard_dependencies/shard_dependencies.go` :
+
+```go
+func JSMapGet[K comparable, V any](values map[K]V, key K) any {
+	var value V
+	var found bool
+	value, found = values[key] // Go dit si la clé existe…
+	if !found {
+		return JSUndefined{}   // …et si elle n'existe pas, on renvoie undefined, comme JS
+	}
+	return value
+}
+```
+
+**Pourquoi un helper ?** En Go, lire une clé absente d'une `map` renvoie silencieusement **zéro** (`scores["eve"]` vaut `0`). En JavaScript, ça renvoie **`undefined`**. `JSMapGet` rétablit le comportement de JS.
+
+### Comment elles arrivent dans le Go : le transformer les « enregistre »
+
+Quand le transformer d'accès (`expression/access.ts`) rencontre `scores[key]`, il écrit :
+
+```ts
+go.call(javascriptValue(context, "mapGet"), [target, key]);
+```
+
+`javascriptValue(context, "mapGet")` fait deux choses :
+1. elle **enregistre** la dépendance : `JSMapGet` sera copié dans `shard_dependencies.go`, avec ce dont il a besoin (`JSUndefined`…), et le fichier recevra `import ".../shard_dependencies"` ;
+2. elle renvoie le nom à appeler : `shard_dependencies.JSMapGet`.
+
+```
+expression/access.ts            javascriptValues.ts                dist/
+ voit scores[key]  ──appelle──►  javascriptValue("mapGet") ──►  shard_dependencies.go  contient JSMapGet
+                                                            └─►  index.ts.go appelle shard_dependencies.JSMapGet(...)
+```
+
+### Les principales, et où les trouver
+
+| Helper Go | Rôle | Écrit dans |
+|---|---|---|
+| `JSMapGet`, `JSElementAt` | lire un `Record` / un tableau, `undefined` si absent | `transformers/expression/javascriptValues.ts` |
+| `JSToString`, `JSTypeOf`, `JSIsNullish` | `String(x)`, `typeof x`, `x == null` | idem |
+| `JSStringLength`, `JSStringSlice`… | chaînes en UTF-16, comme JS | `transformers/duplojs/string/core/sharedDependency.ts` |
+| `JSNumberToString` | `3` et non `3.000000` | `transformers/duplojs/string/to/sharedDependency.ts` |
+| `Map` | `DArray.map` | `transformers/duplojs/array/map/sharedDependency.ts` |
+| `EitherAny`, `WhenIsRight`, `Group`… | les `Either` | `transformers/duplojs/either/…` |
+| `Inspect`, `Print` | `DCommon.print`, comme `console.log` | `transformers/duplojs/common/print/sharedDependency.ts` |
+| `JSNull`, `JSUndefined` | `null` / `undefined` | `sharedDependency/defaults/` |
+
+**À dire à l'oral** : « Quand Go et JavaScript se comportent différemment, on n'improvise pas à chaque fois : on écrit une fois un petit helper Go qui imite JavaScript, et le transpileur ne l'ajoute au programme que s'il sert. »
 
 ---
 
