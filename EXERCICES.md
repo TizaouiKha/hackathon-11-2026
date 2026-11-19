@@ -81,6 +81,7 @@ Objet Fail (projet 04) :
 - ✔ accès à une propriété et à un élément · ✔ `.length` · ✔ littéral d'objet · ✔ template string · ✔ `typeof` · ✔ `??` · ✔ `Math.*` (D-19)
 - ✔ `true` / `false` · ✔ objet `any` utilisé comme objet typé (`JSAs`) · ✔ propriété lue sur un `any` (`JSGetProperty`) (D-20)
 - ✔ **objet plus grand passé à un type plus petit** (`test(user)` avec `test(arg: { name: string })`) : objet temporaire construit à la compilation, y compris imbriqué et tableau d'objets (D-21)
+- ✔ **`DArray`** : `map`, `coalescing`, `filter`, `find`, `findIndex`, `some`, `every`, `includes`, `push`, `concat`, `length`, avec données et curryfiées (D-22)
 - ⬜ `?.` · ⬜ `await` (projet 10)
 
 **Types**
