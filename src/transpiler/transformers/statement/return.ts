@@ -7,8 +7,14 @@ import { expressionTransformers } from "../expression";
 
 export const returnStatementTransformer: Transformer<GoAST.ReturnStatement> = createTransformer(
 	async(node, context) => {
-		if (!TsAST.isReturnStatement(node) || !node.expression) {
+		if (!TsAST.isReturnStatement(node)) {
 			return context.notSupport();
+		}
+
+		if (!node.expression) {
+			return context.success({
+				result: GoAST.createReturnStatement({ values: [] }),
+			});
 		}
 
 		const expression = await DCommon.asyncPipe(

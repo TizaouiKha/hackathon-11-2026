@@ -7,7 +7,7 @@
     "test:types": "./.commands/test-types.sh",
     "test:lint": "./.commands/test-lint.sh",
 		"check": "./.commands/check.sh",
-		"test:runtime": "./.commands/test-runtime.sh"
+		"test:runtime": "bash ./.commands/test-runtime.sh"
   },
   "devEngines": {
     "packageManager": {

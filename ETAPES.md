@@ -19,7 +19,7 @@ Chaque étape indique : **le but**, **ce qu'il faut avoir lu**, **ce qu'il faut 
 | 3 | [Représentation des `Either` en Go](#étape-3--représentation-des-either-en-go) | — | Claude | ✅ (branche `etape-3-either`) |
 | 4 | [`print` fidèle à Node (`util.inspect`)](#étape-4--print-fidèle-à-node) | — | | ✅ |
 | 5 | [Helper de préparation](#étape-5--helper-de-préparation) | — | Yacine | ✅ |
-| 6 | [Transformers de base du langage](#étape-6--transformers-de-base-du-langage) | 5 | | ⬜ |
+| 6 | [Transformers de base du langage](#étape-6--transformers-de-base-du-langage) | 5 | Codex | ✅ |
 | 7 | [Domaine Either (handlers)](#étape-7--domaine-either) | 3, 5 | Claude | 🟨 presque fini (branche `etape-7-either-helpers`) : il reste `group` (attend les types tableau, étape 6) |
 | 8 | [Domaines Common / Array / String](#étape-8--domaines-common--array--string) | 4, 5 | Claude | 🟨 8a fait (`pipe`, formes curryfiées) ; 8b : `DString.to` fait (branche `etape-8b-dstring-to`), `print`, `map` et `coalescing` attendent les étapes 4 et 6 |
 | 9 | [Valider les projets 01 → 09](#étape-9--valider-les-projets-01--09) | 6, 7, 8 | tout le monde | ⬜ |
@@ -245,6 +245,13 @@ Les règles à reproduire :
 ---
 
 ## Étape 6 — Transformers de base du langage
+
+> ✅ **Fait** : variables locales et module, `if`/`else`, retours vides, chaînes,
+> unaires, parenthèses, ternaires, fonctions fléchées, tableaux, tuples et
+> paramètres tuple déstructurés. `tests/language-basics/` vérifie 16 comportements
+> à l'exécution. Le projet 01 passe entièrement ; les projets 02 à 08 atteignent
+> désormais leurs fonctions `DArray.map` / `DArray.coalescing`, qui relèvent de
+> l'étape 8 et non des constructions de langage de cette étape.
 
 **But** : traduire les constructions TypeScript « normales » (hors DuploJS) utilisées dans les exercices.
 
