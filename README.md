@@ -11,6 +11,7 @@ Ce README résume le projet. Le détail est dans les autres documents :
 
 | Document | Contenu |
 |---|---|
+| **[problematiques/](problematiques/)** | **Les 13 problématiques étudiées, une par dossier : le problème, l'historique des réflexions, des exemples TS / Go écrits à la main** |
 | [DECISIONS.md](DECISIONS.md) | Chaque choix d'architecture (`D-xx`) : le problème, la solution retenue, ce qui a été vérifié |
 | [ETAPES.md](ETAPES.md) | Le découpage du travail en étapes, qui a fait quoi, et ce qui reste à faire |
 | [EXERCICES.md](EXERCICES.md) | Les 11 projets : ce qu'ils demandent, le Go produit, la sortie attendue |
