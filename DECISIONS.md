@@ -729,7 +729,7 @@ Le routeur `DCommon` passe aussi d'une chaîne de `DPattern.match` à une **tabl
 - `justReturn(entrée, valeur)` : seule la forme curryfiée (la plus courante) est traduite.
 
 **Vérifié** : `tests/dcommon/` (13 contrôles comparés à Node, dont `equal(NaN, NaN)`, la véracité de `0`, `""`, `NaN` et `undefined`, `DArray.filter(list, DCommon.truthy)`, `DArray.filter(list, DCommon.equal(["a", "c"]))` et `DArray.map(list, DCommon.justReturn(0))`), plus toute la suite.
-### D-27 · Unions de types connus — 🟨 partie 1 faite (20/11/2026, branche `unions-membres`)
+### D-27 · Unions de types connus — ✅ (20/11/2026, partie 1 : PR #28, partie 2 : branche `unions-in-switch`)
 
 **Le besoin** : fournir une union de n'importe quels types connus (`string | "admin" | User`, `{ kind: "circle" … } | { kind: "square" … }`) et en ressortir la donnée. Côté Duplo, le lint interdit `any` : **chaque membre est connu à la compilation**.
 
@@ -753,9 +753,14 @@ Sourced_value.(struct{ Sourced_name string; Sourced_age float64 }).Sourced_age
 
 **Limite** : deux membres qui donnent exactement le même type Go (deux objets de même forme) sont fusionnés. Go ne peut pas les distinguer à l'exécution.
 
-**Partie 2 (à faire)** : l'opérateur `in` (`"barks" in animal`, décidé par un `switch` sur le type) et le `switch` qui couvre tous les cas (ajouter une sortie impossible : Go exige un `return`).
+**Partie 2** :
+- **`"barks" in animal`** (`expression/inOperator.ts`) : savoir si un membre a le champ se décide à la compilation. Il reste un `switch` sur le type pour savoir quel membre est dans la boîte (`case Dog: return true`). La lecture du membre rétréci juste après (`animal.barks`) passe par l'assertion de la partie 1. Refusé : un champ facultatif (JS distingue « absent » et « présent mais undefined »), une clé non littérale.
+- **Fin de fonction** (`shared/functionEnd.ts`, branché dans les fonctions déclarées et fléchées) : Go exige que le corps se termine par une instruction terminale (`return`, `panic`, `if / else` dont les deux branches terminent, `switch` avec `default`… : les règles de la spécification Go). Si ce n'est pas le cas :
+  - le type de retour contient `undefined` : `return JSUndefined{}`, ce que fait JS en arrivant au bout. Avec la config Duplo (`noImplicitReturns`), ce cas n'arrive pas dans un code valide, c'est une sécurité ;
+  - sinon, TypeScript garantit que la fin est inatteignable (le `switch` qui couvre tous les cas) : `panic(...)`, jamais exécuté.
+  - Rien n'est ajouté quand le corps se termine déjà, sinon `go vet` signalerait du code inatteignable.
 
-**Vérifié** : `tests/unions/` (9 contrôles comparés à Node : le cas `string | "admin" | User`, une liste mélangée avec un objet littéral, un objet plus grand qui entre dans l'union, une union discriminée avec des littéraux, le discriminant lu sur une liste, une union gardée et affichée, une union dans un champ d'objet, une union renvoyée par une fonction, `number | undefined`), plus toute la suite.
+**Vérifié** : `tests/unions/` (12 contrôles comparés à Node : le cas `string | "admin" | User`, une liste mélangée avec un objet littéral, un objet plus grand qui entre dans l'union, une union discriminée avec des littéraux, le discriminant lu sur une liste, une union gardée et affichée, une union dans un champ d'objet, une union renvoyée par une fonction, `number | undefined` ; partie 2 : `in` puis lecture du membre rétréci, `switch` qui couvre tous les cas, `number | undefined` avec `return undefined` final), plus toute la suite.
 
 ### D-11 · Asynchrone (projet 10) — 🟡
 - Il n'y a aucune vraie entrée/sortie, donc une **exécution synchrone** (`Promise<T>` traduit en `T`) préserve l'ordre et le résultat.

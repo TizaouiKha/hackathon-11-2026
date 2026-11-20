@@ -36,6 +36,9 @@ func main() {
 	expect("nestedUnion", unions.Sourced_nestedUnion(), "user:Eve/3")
 	expect("returned", unions.Sourced_returned(), "[ 'user:Ada/37', 'ADMIN' ]")
 	expect("optional", unions.Sourced_optional(), "[ 0, 5 ]")
+	expect("withIn", unions.Sourced_withIn(), "[ 'Rex:wouf', 'Tom:miaou' ]")
+	expect("exhaustive", unions.Sourced_exhaustive(), "[ 'carré 4', 'rond 1' ]")
+	expect("fallThrough", unions.Sourced_fallThrough(), "[ 3, undefined ]")
 
 	if failures > 0 {
 		fmt.Printf("\n%d échec(s)\n", failures)

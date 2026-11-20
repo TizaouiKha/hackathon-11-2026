@@ -3,6 +3,7 @@ import { GoAST } from "@go";
 import { createTransformer, type Transformer } from "@transformer";
 import * as DCommon from "@duplojs/lang/common";
 import * as DArray from "@duplojs/lang/array";
+import { closeFunctionBody } from "../shared/functionEnd";
 import { tsTypeToGo } from "../type";
 import * as DEither from "@duplojs/lang/either";
 import { TypeFlags } from "typescript/async";
@@ -99,7 +100,12 @@ export const functionDeclarationTransformer: Transformer<GoAST.FunctionDeclarati
 				identifier: functionIdentifier,
 				arguments: functionArguments,
 				returnTypes: returnType ? [DEither.unwrapRight(returnType)] : [],
-				body: body.result,
+				// Go exige une fin explicite quand TS sait que tous les cas sont traités (D-27).
+				body: returnType
+					? GoAST.createBlockStatement({
+						statements: await closeFunctionBody(body.result.statements, tsReturnType, context),
+					})
+					: body.result,
 				generic: [],
 			}),
 		});
