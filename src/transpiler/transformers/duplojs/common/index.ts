@@ -1,17 +1,24 @@
 import * as DCommon from "@duplojs/lang/common";
 import * as DEither from "@duplojs/lang/either";
-import * as DPattern from "@duplojs/lang/pattern";
 import { createTransformer, type Transformer } from "@transformer";
 import type { GoAST } from "@go";
 import { TsAST } from "@typescript";
 import { pipeExpressionHandler } from "./pipe";
 import { printExpressionHandler } from "./print";
 import { asyncPipeExpressionHandler } from "./asyncPipe";
+import { commonBasicsHandlers, type CommonHandler } from "./basics";
+
+/** Une entrée par fonction `DCommon` prise en charge (table : pas de limite d'arguments). */
+const commonHandlers: Record<string, CommonHandler> = {
+	pipe: (node, context) => Promise.resolve(pipeExpressionHandler(node, context)),
+	asyncPipe: (node, context) => Promise.resolve(asyncPipeExpressionHandler(node, context)),
+	print: (node, context) => Promise.resolve(printExpressionHandler(node, context)),
+	...commonBasicsHandlers,
+};
 
 /**
  * Routeur du domaine `@duplojs/lang/common` (fonctions `DCommon.*`).
- * Ajouter ici un `DPattern.match` par fonction prise en charge
- * (par exemple `print`, étape 4), avec son handler dans un dossier dédié.
+ * Ajouter une entrée dans `commonHandlers` par fonction prise en charge.
  */
 export const duploJSCommonExpressionTransformer: Transformer<GoAST.Expression> = createTransformer(
 	async(node, context) => {
@@ -35,24 +42,11 @@ export const duploJSCommonExpressionTransformer: Transformer<GoAST.Expression> =
 			return context.notSupport();
 		}
 
-		return DCommon.pipe(
-			moduleReference.symbol.name,
-			DPattern.match(
-				DCommon.equal("pipe"),
-				() => pipeExpressionHandler(node, context),
-			),
-			DPattern.match(
-				DCommon.equal("asyncPipe"),
-				() => asyncPipeExpressionHandler(node, context),
-			),
-			DPattern.match(
-				DCommon.equal("print"),
-				() => printExpressionHandler(node, context),
-			),
-			// Fonction du domaine pas encore traduite : `notfound-transformer` la signalera.
-			DPattern.otherwise(
-				() => context.notSupport(),
-			),
-		);
+		const { name } = moduleReference.symbol;
+
+		// Fonction du domaine pas encore traduite : `notfound-transformer` la signalera.
+		return Object.hasOwn(commonHandlers, name)
+			? commonHandlers[name]!(node, context)
+			: context.notSupport();
 	},
 );

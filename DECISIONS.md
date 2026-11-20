@@ -702,6 +702,33 @@ struct{ Sourced_name string; Sourced_email string }{Sourced_name: Sourced_user.S
 
 **Vérifié** : `tests/dnumber/` (39 valeurs comparées à Node, dont `NaN`, `Infinity`, `-0`, nombres négatifs, `2^53`, tableau vide, `filter` avec `DNumber.isEven` et `DNumber.greaterThan(2)`), plus toute la suite.
 
+### D-26 · Fonctions `DCommon` de base — ✅ (20/11/2026, branche `dcommon`)
+
+**Traduites** (`duplojs/common/basics/`), avec données, curryfiées dans un `pipe`, et passées en valeur pour celles à un argument :
+
+| DuploJS | Go |
+|---|---|
+| `when(x, p, f)`, `whenNot`, `whenElse(x, p, alors, sinon)` | helpers génériques `When`, `WhenNot`, `WhenElse` ; le résultat (`any`) est ouvert vers le type TS quand il est précis |
+| `equal(x, v)` | `x == v` (valeurs simples seulement : en JS, deux objets se comparent par référence) |
+| `equal(x, [a, b])` | `JSEqualOneOf(x, a, b)` |
+| `and(x, [p, q])`, `or` | `p(x) && q(x)` / `\|\|`, court-circuit comme JS ; `x` lu une seule fois |
+| `tap(x, f)` | `Tap(x, f)` : appelle `f(x)`, renvoie `x` |
+| `truthy`, `falsy` | `JSTruthy(x)` : faux pour `false`, `0`, `-0`, `NaN`, `""`, `undefined`, `null` |
+| `isType(x, "string" \| "number" \| "boolean" \| "undefined" \| "null")` | `JSIsType` (`JSTypeOf`, et `null` à part) |
+| `justExec(f)` | `f()` |
+| `justReturn(v)` | une fonction qui ignore son entrée et renvoie `v` (évalué une seule fois, tout de suite) |
+| `forward(x)` | `x` |
+
+Le routeur `DCommon` passe aussi d'une chaîne de `DPattern.match` à une **table** (`commonHandlers`), comme les autres domaines.
+
+**Refusé avec une erreur claire** :
+- `equal` sur des objets ou des tableaux (référence en JS, valeur en Go) ;
+- `equal(x, liste)` avec une liste qui n'est pas un tableau littéral ;
+- `and` / `or` avec une liste de prédicats qui n'est pas un tableau littéral ;
+- `isType` avec `"array"`, `"object"`, `"function"`, `"iterable"`… ;
+- `justReturn(entrée, valeur)` : seule la forme curryfiée (la plus courante) est traduite.
+
+**Vérifié** : `tests/dcommon/` (13 contrôles comparés à Node, dont `equal(NaN, NaN)`, la véracité de `0`, `""`, `NaN` et `undefined`, `DArray.filter(list, DCommon.truthy)`, `DArray.filter(list, DCommon.equal(["a", "c"]))` et `DArray.map(list, DCommon.justReturn(0))`), plus toute la suite.
 ### D-27 · Unions de types connus — 🟨 partie 1 faite (20/11/2026, branche `unions-membres`)
 
 **Le besoin** : fournir une union de n'importe quels types connus (`string | "admin" | User`, `{ kind: "circle" … } | { kind: "square" … }`) et en ressortir la donnée. Côté Duplo, le lint interdit `any` : **chaque membre est connu à la compilation**.
