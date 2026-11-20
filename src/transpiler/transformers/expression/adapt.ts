@@ -52,6 +52,7 @@ interface ClassifiedType {
 function silentContext(context: BuildContext): BuildContext {
 	return {
 		...context,
+		goTypeCache: context.goTypeProbeCache,
 		registerSharedDependency: () => sharedDependencyPackageName,
 	};
 }

@@ -176,7 +176,7 @@ puis le `if` appelle la méthode de test du tag et le printer partagé.
 <details>
 <summary>Afficher le Go généré</summary>
 
-Les noms de package sont abrégés ici (`add_ts`) : le transpileur les écrit encore avec le chemin absolu du fichier (bug B-02, étape 11).
+Les noms de package sont maintenant dérivés du chemin relatif au projet (B-02, étape 11), donc stables entre machines.
 
 ```go
 import "duplojs.local/transpiled/add.ts"
@@ -222,7 +222,7 @@ func init() {
 <details>
 <summary>Afficher le Go généré</summary>
 
-Les noms de package sont abrégés ici (`add_ts`) : le transpileur les écrit encore avec le chemin absolu du fichier (bug B-02, étape 11).
+Les noms de package sont maintenant dérivés du chemin relatif au projet (B-02, étape 11), donc stables entre machines.
 
 ```go
 import "duplojs.local/transpiled/add.ts"
@@ -276,7 +276,7 @@ func init() {
 <details>
 <summary>Afficher le Go généré</summary>
 
-Les noms de package sont abrégés ici (`add_ts`) : le transpileur les écrit encore avec le chemin absolu du fichier (bug B-02, étape 11).
+Les noms de package sont maintenant dérivés du chemin relatif au projet (B-02, étape 11), donc stables entre machines.
 
 ```go
 import "duplojs.local/transpiled/add.ts"
@@ -333,7 +333,7 @@ func init() {
 <details>
 <summary>Afficher le Go généré</summary>
 
-Les noms de package sont abrégés ici (`add_ts`) : le transpileur les écrit encore avec le chemin absolu du fichier (bug B-02, étape 11).
+Les noms de package sont maintenant dérivés du chemin relatif au projet (B-02, étape 11), donc stables entre machines.
 
 ```go
 import "duplojs.local/transpiled/add.ts"
@@ -405,7 +405,7 @@ func init() {
 <details>
 <summary>Afficher le Go généré</summary>
 
-Les noms de package sont abrégés ici (`add_ts`) : le transpileur les écrit encore avec le chemin absolu du fichier (bug B-02, étape 11).
+Les noms de package sont maintenant dérivés du chemin relatif au projet (B-02, étape 11), donc stables entre machines.
 
 ```go
 import "duplojs.local/transpiled/add.ts"
@@ -495,7 +495,7 @@ func init() {
 <details>
 <summary>Afficher le Go généré</summary>
 
-Les noms de package sont abrégés ici (`add_ts`) : le transpileur les écrit encore avec le chemin absolu du fichier (bug B-02, étape 11).
+Les noms de package sont maintenant dérivés du chemin relatif au projet (B-02, étape 11), donc stables entre machines.
 
 ```go
 import "duplojs.local/transpiled/add.ts"
@@ -593,7 +593,7 @@ func init() {
 <details>
 <summary>Afficher le Go généré</summary>
 
-Les noms de package sont abrégés ici (`add_ts`) : le transpileur les écrit encore avec le chemin absolu du fichier (bug B-02, étape 11).
+Les noms de package sont maintenant dérivés du chemin relatif au projet (B-02, étape 11), donc stables entre machines.
 
 ```go
 import "duplojs.local/transpiled/add.ts"
@@ -687,7 +687,7 @@ func init() {
 <details>
 <summary>Afficher le Go généré</summary>
 
-Les noms de package sont abrégés ici (`add_ts`) : le transpileur les écrit encore avec le chemin absolu du fichier (bug B-02, étape 11).
+Les noms de package sont maintenant dérivés du chemin relatif au projet (B-02, étape 11), donc stables entre machines.
 
 ```go
 import "duplojs.local/transpiled/add.ts"

@@ -35,6 +35,7 @@ import { tsTypeToGo, type GoType } from "../type/tsTypeToGo";
 async function render(type: Type, node: TsAST.Node, context: BuildContext) {
 	const goType = await tsTypeToGo(type, node, {
 		...context,
+		goTypeCache: context.goTypeProbeCache,
 		registerSharedDependency: () => sharedDependencyPackageName,
 	});
 
