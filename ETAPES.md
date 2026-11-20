@@ -25,7 +25,7 @@ Chaque étape indique : **le but**, **ce qu'il faut avoir lu**, **ce qu'il faut 
 | 8 | [Domaines Common / Array / String](#étape-8--domaines-common--array--string) | 4, 5 | Claude | ✅ 8a (`pipe`, formes curryfiées), 8b (`DString.*`, `DArray.map`, `DArray.coalescing`, D-18.4 et D-18.5) ; `print` fait à l'étape 4 |
 | 9 | [Valider les projets 01 → 09](#étape-9--valider-les-projets-01--09) | 6, 7, 8 | tout le monde | ✅ les 10 projets (00 à 09) passent |
 | 10 | [Projet 10 (asynchrone)](#étape-10--projet-10-asynchrone) | 9 | *(à remplir)* | 🟨 en cours |
-| 11 | [Performance et finitions](#étape-11--performance-et-finitions) | 9 | | ⬜ |
+| 11 | [Performance et finitions](#étape-11--performance-et-finitions) | 9 | Wilbour | ✅ |
 | 12 | [Couvrir le TypeScript courant](#étape-12--couvrir-le-typescript-courant-au-delà-des-exercices) | 6 | Claude | 🟨 D-19 à D-22 et R-01 n° 2 faits ; suite : autres `DArray` (`flatMap`, `sort`, `slice`…), reste de `DCommon`, puis `Record` |
 
 ```
@@ -478,15 +478,17 @@ Go typé et applique un assignateur propre à chaque champ.
 
 **But** : montrer au jury que le Go produit est **pertinent et performant**, comme le demande le cours « Stratégies ».
 
-**À faire** :
-1. `go build -gcflags=-m ./...` dans un `dist/` : repérer les valeurs allouées sur le tas (`escapes to heap`) et les supprimer quand c'est possible.
-2. Écrire un benchmark (`go test -bench`) qui compare `EitherAny` (tag entier + `Value any`, D-18) à une version avec l'information en chaîne, et mesurer le coût des assertions `.Value.(T)`, pour justifier D-09 et D-18 avec des chiffres.
-3. **Comparer Node et Go** sur les projets qui passent : temps d'exécution et mémoire, même entrée. C'est le chiffre principal pour le jury.
-4. **Dérouler à la compilation les helpers qui coûtent** (D-09.3) : seulement ceux que `-gcflags=-m` ou le benchmark désignent (probablement `IsRight`, et les closures de `WhenIsRight` si elles sont allouées sur le tas). Mesurer avant et après.
-5. Rendre les noms de package lisibles (bug B-02) : utiliser le chemin relatif, pas le chemin absolu.
-6. Relire le Go généré des projets : supprimer les temporaires inutiles et les conversions redondantes.
-7. **Mettre en cache la traduction des types** (`tsTypeToGo` retraduit le même type à chaque usage) ou utiliser des **types nommés** pour les objets : moins de travail à la transpilation, et un Go plus lisible.
-8. Résumer les chiffres et les choix dans `DECISIONS.md`, pour la présentation.
+**Réalisé** :
+1. ✅ `go build -gcflags=-m=2 ./...` est intégré au banc de mesure. Les helpers de tag sont inlinés et les closures observées n'échappent pas ; les allocations restantes viennent surtout du boxing dans `any`, des tableaux et de l'affichage.
+2. ✅ Le benchmark compare tag entier, information en chaîne, assertion de type, stockage typé et stockage dans `any`.
+3. ✅ Sur le même calcul de 5 000 000 d'itérations (5 exécutions), le relevé final donne **1,350 s / 5,7 MiB** pour Go contre **4,758 s / 84,4 MiB** pour Node : environ **3,52× plus rapide** et **14,8× moins de RSS** sur la machine de mesure.
+4. ✅ Aucun helper n'est déroulé : `WhenIsRight` et sa version en ligne ont le même coût (environ 21 ns, 8 B, 1 allocation), tandis que `IsRight` est déjà inliné par Go.
+5. ✅ Les packages sont maintenant nommés depuis le chemin relatif au projet (B-02), donc ils sont stables entre machines.
+6. ✅ Le Go généré a été relu. Les temporaires conservés garantissent l'ordre d'évaluation JavaScript et les conversions maintiennent la représentation `number` en `float64` ; aucune suppression globale sûre n'a été identifiée.
+7. ✅ `tsTypeToGo` possède un cache par fichier, séparé du cache des sondages silencieux afin de ne pas perdre les imports et dépendances nécessaires.
+8. ✅ Les chiffres et leurs limites sont consignés dans D-28 de `DECISIONS.md`.
+
+Le benchmark complet est reproductible avec `pnpm bench:step11`. Les chiffres dépendent de la machine ; le script vérifie d'abord que Node et Go produisent exactement la même sortie.
 
 ---
 

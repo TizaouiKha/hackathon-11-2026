@@ -81,8 +81,18 @@ function distinct(types: readonly GoType[]) {
 	);
 }
 
-export function tsTypeToGo(type: Type, node: TsAST.Node, context: BuildContext): GoTypeResult {
-	return translate(type, node, context, new Set());
+export async function tsTypeToGo(type: Type, node: TsAST.Node, context: BuildContext): GoTypeResult {
+	const cached = context.goTypeCache.get(type.id);
+	if (cached) {
+		return goType(cached);
+	}
+
+	const translated = await translate(type, node, context, new Set());
+	if (DEither.isRight(translated)) {
+		context.goTypeCache.set(type.id, DEither.unwrapRight(translated));
+	}
+
+	return translated;
 }
 
 /** Type Go de l'expression ou de la déclaration `node`, d'après le checker. */
@@ -137,6 +147,7 @@ async function translate(
 		const probe = constraint && constraint.id !== type.id
 			? await translate(constraint, node, {
 				...context,
+				goTypeCache: context.goTypeProbeCache,
 				registerSharedDependency: () => sharedDependencyPackageName,
 			}, inProgress)
 			: undefined;

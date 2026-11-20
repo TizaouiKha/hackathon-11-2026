@@ -2,6 +2,7 @@ import * as DCommon from "@duplojs/lang/common";
 import * as DEither from "@duplojs/lang/either";
 import * as DModeling from "@duplojs/lang/modeling";
 import type * as DObject from "@duplojs/lang/object";
+import * as DPath from "@duplojs/lang/path";
 import * as DString from "@duplojs/lang/string";
 import { GoAST } from "@go";
 import { TsAST } from "@typescript";
@@ -17,6 +18,10 @@ export type { DependencyReference } from "../resolvedReference";
 export interface BuildContext {
 	readonly transpilation: TranspilationContext;
 	readonly file: FileContext;
+
+	/** Types Go déjà traduits dans ce fichier. Les sondages utilisent un cache séparé. */
+	readonly goTypeCache: Map<number, GoAST.TypeReference | GoAST.Type>;
+	readonly goTypeProbeCache: Map<number, GoAST.TypeReference | GoAST.Type>;
 	transform<
 		GenericTransformers extends readonly Transformer[],
 	>(
@@ -49,6 +54,7 @@ export interface BuildContext {
 	error(node: TsAST.Node, content?: unknown): TransformationError;
 	generateIdentifier(): GoAST.Identifier;
 	createSourceIdentifier(value: string): GoAST.Identifier;
+	createSourcePackageIdentifier(filePath: string & DPath.Absolute): GoAST.Identifier;
 	registerSharedDependency(sharedDependency: SharedDependency): GoAST.Identifier;
 	resolveDependencyFile(
 		reference: DependencyReference | Symbol,
@@ -68,6 +74,8 @@ export function createBuildContext(
 	const context: BuildContext = {
 		transpilation,
 		file,
+		goTypeCache: new Map(),
+		goTypeProbeCache: new Map(),
 		transform: (data, transformers) => transform(data, transformers, context),
 		transformPrepared: async(data, transformers, forceTemporary = false) => {
 			const transformed = DEither.unwrapRight(await context.transform(data, transformers));
@@ -141,7 +149,7 @@ export function createBuildContext(
 		),
 		registerDependencyFile: ({ filePath }) => {
 			file.dependencyFiles.add(filePath);
-			return context.createSourceIdentifier(filePath);
+			return context.createSourcePackageIdentifier(filePath);
 		},
 		generateIdentifier: () => GoAST.createIdentifier(`Generated_${transpilation.increment()}`),
 		createSourceIdentifier: (value) => DCommon.pipe(
@@ -155,6 +163,9 @@ export function createBuildContext(
 			),
 			DString.prepend("Sourced_"),
 			GoAST.createIdentifier,
+		),
+		createSourcePackageIdentifier: (filePath) => context.createSourceIdentifier(
+			DPath.computeRelative(transpilation.projectWorkDirectory, filePath),
 		),
 	};
 

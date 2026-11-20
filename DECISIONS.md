@@ -74,7 +74,7 @@ const (                         // générées par le transpileur :
 	TagDivisionByZero
 )
 ```
-- **Pourquoi** : c'est l'option la plus performante, ce que l'équipe cherche. La comparaison d'entier tient en une instruction, le tag ne pèse qu'un octet, et une faute de nom est détectée à la compilation.
+- **Pourquoi** : le tag ne pèse qu'un octet, permet des tables de métadonnées bornées et une faute de nom est détectée à la compilation. Le benchmark de D-28 mesure environ 0,5 ns/op sans allocation pour le tag comme pour une chaîne littérale : il ne démontre pas de gain de vitesse isolé pour l'entier.
 - Le **côté** (droite/gauche) et le **texte** de l'information ne sont pas stockés dans la valeur. On les retrouve à partir du tag avec deux tables générées : `isRightTag[tag]` et `informationName[tag]`.
 - Pour faciliter le débogage, `EitherTag` a une méthode `String()` qui affiche le nom.
 - **Écarté** :
@@ -111,7 +111,7 @@ func RightPipe…, Group…, MatchInformation…
   - le Go généré reste proche du TypeScript, donc facile à déboguer ;
   - c'est la démarche du cours : « compiler correctement, puis spécialiser les cas coûteux et mesurer ».
 - **Coût accepté** : un appel de fonction et une closure possible. Le compilateur Go supprime souvent l'appel des petites fonctions de lui-même (inlining).
-- **Plus tard (étape 11)** : `go build -gcflags=-m` et `go test -bench`. On ne déroule à la compilation que ce que les mesures désignent, probablement `IsRight`.
+- **Mesuré à l'étape 11 (D-28)** : Go inline déjà `IsRight`, et dérouler `WhenIsRight` ne réduit ni le temps ni les allocations. Les helpers restent donc génériques et lisibles.
 - Les helpers sont des **shared dependencies**, une par opération (voir le skill `typescript-to-go`).
 
 #### D-09.4 · Mise en œuvre (étape 3) — ✅ (17/11/2026, branche `etape-3-either`)
@@ -259,7 +259,7 @@ type EitherAny struct {
   - **un type switch** si TS indique une union de valeurs brutes ;
   - **rien** si la valeur est seulement transmise ;
   - **la réflexion** pour `print`.
-- **Mesuré** (`go test -bench`) : assertion ~1 ns. Ranger un `float64` dans `any` coûte une allocation (6,3 ns contre 2,4 ns sans). Une case `Num float64` à part est une **optimisation possible plus tard** (étape 11), pas maintenant.
+- **Mesuré à l'étape 11 (D-28)** : l'assertion coûte environ 1,4 ns sans allocation. Ranger un `float64` dans `any` coûte une allocation (environ 21 ns contre 1 ns avec un champ typé). Une case `Num float64` séparée reste une optimisation possible, mais elle complexifierait toute la représentation pour un gain qui n'est pas nécessaire aux workloads actuels.
 
 **2. Une couche de traduction centrale : `tsTypeToGo(type)`.** Un **seul** endroit traduit un type du checker (objet `Type`, et non plus un nœud de type) en type Go :
 
@@ -762,6 +762,27 @@ Sourced_value.(struct{ Sourced_name string; Sourced_age float64 }).Sourced_age
 
 **Vérifié** : `tests/unions/` (12 contrôles comparés à Node : le cas `string | "admin" | User`, une liste mélangée avec un objet littéral, un objet plus grand qui entre dans l'union, une union discriminée avec des littéraux, le discriminant lu sur une liste, une union gardée et affichée, une union dans un champ d'objet, une union renvoyée par une fonction, `number | undefined` ; partie 2 : `in` puis lecture du membre rétréci, `switch` qui couvre tous les cas, `number | undefined` avec `return undefined` final), plus toute la suite.
 
+### D-28 · Mesures de performance et finitions — ✅ (20/11/2026, étape 11)
+
+Le banc reproductible `pnpm bench:step11` transpile un même calcul de 5 000 000 d'itérations, vérifie que Node et Go affichent exactement le même résultat, puis mesure chaque exécutable cinq fois. Sur un Ryzen 7 5700U avec Node 24.13.1 et Go 1.27.4 :
+
+| Exécution | Temps moyen | RSS maximal moyen |
+|---|---:|---:|
+| Node (`tsx`) | 4,758 s | 84,4 MiB |
+| Go compilé | 1,350 s | 5,7 MiB |
+
+Sur ce relevé, le Go est donc environ **3,52 fois plus rapide** et utilise **14,8 fois moins de mémoire maximale**. Ce résultat ponctuel décrit cette machine et ce workload, pas tous les programmes possibles ; les valeurs absolues varient avec la charge de la machine.
+
+Les microbenchmarks Go (`go test -bench=. -benchmem -count=5`) montrent :
+
+- tag entier et information littérale en chaîne : environ 0,5 ns/op, sans allocation ; la mesure ne permet donc pas de prétendre que l'entier est plus rapide dans ce cas isolé. Le tag entier reste retenu pour sa taille bornée, ses tables de métadonnées et la détection des erreurs à la compilation ;
+- lecture typée et assertion `.Value.(float64)` : environ 1,4 ns/op, sans allocation ;
+- stockage d'un `float64` dans `any` : environ 21 ns/op, 8 B et 1 allocation, contre environ 1 ns/op et aucune allocation pour un champ `float64` ; le coût vient du boxing, pas de l'assertion ;
+- `WhenIsRight` générique et sa version déroulée : environ 21 ns/op, 8 B et 1 allocation dans les deux cas. Le déroulage n'apporte pas de gain mesurable, donc le helper lisible est conservé ;
+- l'analyse `-gcflags=-m=2` confirme que `EitherTag.IsRight` et `IsLeft` sont inlinés et que les closures du projet 10 observées n'échappent pas.
+
+Le Go généré a aussi été relu : les temporaires protègent l'ordre d'évaluation JavaScript et les conversions explicites conservent `number` en `float64`. Aucune suppression générale sûre n'est justifiée par les mesures. Les optimisations retenues sont donc sans changement sémantique : cache de `tsTypeToGo` par fichier, cache distinct pour les sondages silencieux, et noms de packages calculés depuis le chemin relatif au projet.
+
 ### D-11 · Asynchrone (projet 10) — 🟡
 - Il n'y a aucune vraie entrée/sortie, donc une **exécution synchrone** (`Promise<T>` traduit en `T`) préserve l'ordre et le résultat.
 - Goroutines et channels seulement en bonus, si on a le temps.
@@ -930,6 +951,6 @@ La remarque 4 est donc traitée : `&&` / `||` entre nombres renvoient bien une v
 - **Limite connue** : `success` utilisée comme valeur, hors d'un appel (`f(DEither.success)`), renvoie une erreur `success-reference-outside-call`. Ce n'est pas utilisé dans les exercices.
 - **À surveiller** : `success<const T>` donne `Success<1>` pour `success(1)`. Il faudra élargir les types littéraux (étape 3 de [ETAPES.md](ETAPES.md)).
 
-### B-02 · Noms de package illisibles — mineur
-- Le nom du package est tiré du chemin absolu : `Sourced_001bmnt001bc001bUsers...`. C'est valide mais illisible, et la valeur change selon la machine.
-- Piste : utiliser le chemin relatif au `projectWorkDirectory`.
+### B-02 · Noms de package illisibles — ✅ corrigé (20/11/2026, étape 11)
+- Le nom du package était tiré du chemin absolu : `Sourced_001bmnt001bc001bUsers...`. Il était valide mais illisible et changeait selon la machine.
+- Il est maintenant calculé depuis le chemin relatif au `projectWorkDirectory`, par exemple `Sourced_index001ats` et `Sourced_add001ats`.
