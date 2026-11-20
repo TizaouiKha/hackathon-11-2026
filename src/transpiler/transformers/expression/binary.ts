@@ -7,6 +7,7 @@ import * as DArray from "@duplojs/lang/array";
 import { TypeFlags, type Type } from "typescript/async";
 import { type BuildContext } from "../../context/build";
 import { sequenceOperands } from "../shared/sequence";
+import { transformInOperator } from "./inOperator";
 import {
 	bitwiseHelperIdentifiers,
 	javascriptBitwiseDependency,
@@ -231,6 +232,11 @@ export const binaryExpressionTransformer: Transformer<BinaryResultNode> = create
 
 		if (node.operatorToken.kind === TsAST.SyntaxKind.PercentToken) {
 			return transformModulo(node, context);
+		}
+
+		// `"barks" in animal` sur une union d'objets connus (D-27).
+		if (node.operatorToken.kind === TsAST.SyntaxKind.InKeyword) {
+			return transformInOperator(node, context);
 		}
 
 		const bitwiseOperation = bitwiseOperators[node.operatorToken.kind];

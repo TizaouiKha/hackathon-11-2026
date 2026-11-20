@@ -160,6 +160,74 @@ export function optional() {
 	return [orDefault(undefined), orDefault(4)];
 }
 
+// 10. `in` pour distinguer deux objets, puis lecture du membre rétréci.
+type Animal = {
+	name: string;
+	barks: boolean;
+} | {
+	name: string;
+	meows: boolean;
+};
+
+function sound(animal: Animal) {
+	if ("barks" in animal) {
+		return animal.barks ? `${animal.name}:wouf` : `${animal.name}:silence`;
+	}
+
+	return `${animal.name}:miaou`;
+}
+
+export function withIn() {
+	return [
+		sound({
+			name: "Rex",
+			barks: true,
+		}),
+		sound({
+			name: "Tom",
+			meows: true,
+		}),
+	];
+}
+
+// 11. Un switch qui couvre tous les cas : pas de return après.
+function label(shape: Shape) {
+	switch (shape.kind) {
+		case "circle":
+			return `rond ${shape.radius}`;
+		case "square":
+			return `carré ${shape.side}`;
+	}
+}
+
+export function exhaustive() {
+	return [
+		label({
+			kind: "square",
+			side: 4,
+		}),
+		label({
+			kind: "circle",
+			radius: 1,
+		}),
+	];
+}
+
+// 12. `number | undefined` en retour (la config Duplo impose le `return` final).
+function firstPositive(values: number[]): number | undefined {
+	for (const value of values) {
+		if (value > 0) {
+			return value;
+		}
+	}
+
+	return undefined;
+}
+
+export function fallThrough() {
+	return [firstPositive([-1, 3]), firstPositive([-1])];
+}
+
 export function show(value: unknown) {
 	return DCommon.print(value);
 }

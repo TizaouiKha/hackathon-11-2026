@@ -7,6 +7,7 @@ import { createTransformer, type Transformer } from "@transformer";
 import { TsAST } from "@typescript";
 import { TypeFlags, type Symbol } from "typescript/async";
 import { blockStatementTransformer } from "../statement/block";
+import { closeFunctionBody } from "../shared/functionEnd";
 import { tsTypeToGo } from "../type";
 import { expressionTransformers } from ".";
 import { destructure } from "./destructuring";
@@ -137,8 +138,11 @@ export const arrowFunctionTransformer: Transformer<GoAST.FunctionLiteral> = crea
 			if (DEither.isLeft(transformedBody)) {
 				return transformedBody;
 			}
+			const statements = DArray.concat(prefix, transformedBody.before, transformedBody.result.statements);
+
+			// Go exige une fin explicite quand TS sait que tous les cas sont traités (D-27).
 			body = GoAST.createBlockStatement({
-				statements: DArray.concat(prefix, transformedBody.before, transformedBody.result.statements),
+				statements: returnType ? await closeFunctionBody(statements, tsReturnType, context) : statements,
 			});
 		} else if (returnsNothing) {
 			const expressionBody = DEither.unwrapRight(
