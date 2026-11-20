@@ -14,6 +14,7 @@ import {
 import { registerEitherTag, valueInformation } from "../duplojs/either/core/tag";
 import { asTyped, needsConversion } from "./javascriptObjects";
 import { convertStructurally } from "./structuralConversion";
+import { knownUnionMembers, memberFor } from "../type/unionMembers";
 
 /**
  * Adaptation des expressions aux points de narrowing (D-18, phase 2).
@@ -146,6 +147,38 @@ function eitherValue(expression: GoAST.Expression) {
 	});
 }
 
+const notAUnion = Symbol("not-a-union");
+
+/**
+ * Entrée dans une union de types connus (D-27). `notAUnion` : l'endroit n'attend
+ * pas une telle union. `undefined` : la valeur a déjà le type Go de son membre.
+ */
+async function enterUnion(node: TsAST.Expression, expression: GoAST.Expression, produced: Type, context: BuildContext) {
+	const { typeChecker } = context.transpilation;
+	const members = await knownUnionMembers(await typeChecker.getContextualType(node), node, context);
+
+	if (!members) {
+		return notAUnion;
+	}
+
+	const producedGo = await tsTypeToGo(produced, node, silentContext(context));
+	const rendered = DEither.isRight(producedGo) ? GoPrinter.renderNode(DEither.unwrapRight(producedGo)) : undefined;
+
+	if (members.some((member) => member.rendered === rendered)) {
+		return undefined;
+	}
+
+	const member = await memberFor(produced, members, context);
+
+	return member
+		? convertStructurally({
+			value: expression,
+			source: produced,
+			target: member.types[0]!,
+		}, node, context)
+		: undefined;
+}
+
 /** Expression Go adaptée, ou `undefined` si l'expression est déjà du bon type. */
 export async function adaptExpression(
 	node: TsAST.Expression,
@@ -153,6 +186,17 @@ export async function adaptExpression(
 	context: BuildContext,
 ): Promise<GoAST.Expression | undefined> {
 	const produced = await producedType(node, context);
+
+	// Une valeur précise qui entre dans une union (D-27) : rangée sous le type Go
+	// exact de son membre, pour pouvoir la ressortir ensuite par une assertion.
+	if (produced?.kind === "concrete" && !TsAST.isObjectLiteralExpression(node)) {
+		const entering = await enterUnion(node, expression, produced.type, context);
+
+		if (entering !== notAUnion) {
+			return entering;
+		}
+	}
+
 	const target = produced && await targetType(node, context);
 
 	// Deux objets de formes différentes (`User` passé à `{ name: string }`) :
@@ -210,9 +254,19 @@ export async function adaptExpression(
 			return undefined;
 		}
 
+		const rendered = GoPrinter.renderNode(goType);
+
+		// Un membre d'une union connue (D-27) : rangé sous ce type exact, une
+		// assertion suffit, sans réflexion.
+		const members = await knownUnionMembers(produced.type, node, context);
+
+		if (members?.some((member) => member.rendered === rendered)) {
+			return assertTo(expression, goType);
+		}
+
 		// Un objet ou un tableau `any` utilisé comme `User` : recopié champ par champ
 		// (par nom, quel que soit l'ordre), car son struct Go peut être différent (D-20).
-		return needsConversion(GoPrinter.renderNode(goType))
+		return needsConversion(rendered)
 			? asTyped(context, expression, goType)
 			: assertTo(expression, goType);
 	}
