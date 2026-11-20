@@ -729,6 +729,33 @@ Le routeur `DCommon` passe aussi d'une chaîne de `DPattern.match` à une **tabl
 - `justReturn(entrée, valeur)` : seule la forme curryfiée (la plus courante) est traduite.
 
 **Vérifié** : `tests/dcommon/` (13 contrôles comparés à Node, dont `equal(NaN, NaN)`, la véracité de `0`, `""`, `NaN` et `undefined`, `DArray.filter(list, DCommon.truthy)`, `DArray.filter(list, DCommon.equal(["a", "c"]))` et `DArray.map(list, DCommon.justReturn(0))`), plus toute la suite.
+### D-27 · Unions de types connus — 🟨 partie 1 faite (20/11/2026, branche `unions-membres`)
+
+**Le besoin** : fournir une union de n'importe quels types connus (`string | "admin" | User`, `{ kind: "circle" … } | { kind: "square" … }`) et en ressortir la donnée. Côté Duplo, le lint interdit `any` : **chaque membre est connu à la compilation**.
+
+**Avant** : une union de types Go différents est un `any`, et ressortir un membre objet passait par `JSAs`, donc par la réflexion, à **chaque** lecture de champ. Lire le discriminant (`shape.kind`) passait par `JSGetProperty`, réflexion aussi. Un objet littéral écrit directement dans une union (`const values: Value[] = ["x", { name: "Bob" }]`) était refusé.
+
+**Choix : une forme Go canonique par membre.**
+> Toute valeur qui entre dans une union est rangée sous le type Go **exact** de son membre.
+
+- `type/unionMembers.ts` liste les membres d'une union : un par type Go distinct, en gardant tous les types TS qui y mènent (`string` et `"admin"` donnent tous deux `string`). Un membre inconnu (`any`, générique) désactive tout.
+- **Entrer** (`adapt.ts`) : une valeur précise placée là où une union est attendue est convertie vers le type exact de son membre (conversion D-21 si la forme diffère : objet plus grand, autre ordre des champs).
+- **Objet littéral** (`objectLiteral.ts`) : TypeScript dit à quel membre le littéral correspond (`isTypeAssignableTo`, donc via `kind` pour une union discriminée), et on construit ce struct.
+- **Ressortir** (`adapt.ts`) : un membre rétréci devient une simple assertion, `value.(User)`, sans `JSAs`.
+- **Lire un champ commun** (`access.ts`) : `shape.kind` devient un `switch` sur les types Go possibles, chacun lisant son propre champ.
+
+```go
+// value.age après `typeof value !== "string"`
+Sourced_value.(struct{ Sourced_name string; Sourced_age float64 }).Sourced_age
+```
+
+**Résultat** : le Go de `tests/unions` ne contient plus aucun `JSAs` ni `JSGetProperty`. Les objets `any` (D-20) gardent `JSAs`, seul moyen quand la forme est inconnue.
+
+**Limite** : deux membres qui donnent exactement le même type Go (deux objets de même forme) sont fusionnés. Go ne peut pas les distinguer à l'exécution.
+
+**Partie 2 (à faire)** : l'opérateur `in` (`"barks" in animal`, décidé par un `switch` sur le type) et le `switch` qui couvre tous les cas (ajouter une sortie impossible : Go exige un `return`).
+
+**Vérifié** : `tests/unions/` (9 contrôles comparés à Node : le cas `string | "admin" | User`, une liste mélangée avec un objet littéral, un objet plus grand qui entre dans l'union, une union discriminée avec des littéraux, le discriminant lu sur une liste, une union gardée et affichée, une union dans un champ d'objet, une union renvoyée par une fonction, `number | undefined`), plus toute la suite.
 
 ### D-11 · Asynchrone (projet 10) — 🟡
 - Il n'y a aucune vraie entrée/sortie, donc une **exécution synchrone** (`Promise<T>` traduit en `T`) préserve l'ordre et le résultat.

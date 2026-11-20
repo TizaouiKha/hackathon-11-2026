@@ -506,7 +506,8 @@ Go typé et applique un assignateur propre à chaque champ.
 | **D-23** | **`DArray.reduce`** avec `next`, `exit`, `nextPush`, et `DArray.reduceFrom` (avec données et curryfiée) | ✅ (PR #24) |
 | **D-24** | **fonctions `DObject`** : `pick`, `omit`, `assign`, `override`, `getProperty`, `getDeepProperty`, `transformProperty`, `keys`, `values`, `entries`, `countKeys` | ✅ (PR #25) |
 | **D-25** | **fonctions `DNumber`** : comparaisons, `betweenThan*`, `isEven` / `isOdd` / `isInteger` / `isSafe`…, `sum`, `max` / `min`, `maxOf` / `minOf`, `sort` (22 sur 22) | ✅ (PR #26) |
-| **D-26** | **fonctions `DCommon` de base** : `when`, `whenNot`, `whenElse`, `equal`, `and`, `or`, `tap`, `truthy`, `falsy`, `isType`, `justExec`, `justReturn`, `forward` | ✅ (branche `dcommon`) |
+| **D-26** | **fonctions `DCommon` de base** : `when`, `whenNot`, `whenElse`, `equal`, `and`, `or`, `tap`, `truthy`, `falsy`, `isType`, `justExec`, `justReturn`, `forward` | ✅ (PR #27) |
+| **D-27** | **unions de types connus** (`string \| "admin" \| User`, unions discriminées) : rangées sous le type exact du membre, ressorties par assertion, objet littéral dans une union, lecture du discriminant par `switch` sur le type | ✅ partie 1 (branche `unions-membres`) ; partie 2 : `in`, `switch` exhaustif |
 
 **D-21 en détail** (voir `DECISIONS.md` et `docs/objets-sous-types-et-any.md`) : `expression/structuralConversion.ts` construit l'objet attendu champ par champ (récursif, tableaux d'objets, champ facultatif → `undefined`, source évaluée une fois). Test : `tests/structural-objects/`. Différence assumée : un objet renvoyé sous le type plus petit n'affiche que les champs de ce type.
 

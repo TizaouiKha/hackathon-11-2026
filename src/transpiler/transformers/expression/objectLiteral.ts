@@ -1,10 +1,12 @@
 import * as DArray from "@duplojs/lang/array";
+import * as DCommon from "@duplojs/lang/common";
 import * as DEither from "@duplojs/lang/either";
 import * as DModeling from "@duplojs/lang/modeling";
 import { GoAST, GoPrinter } from "@go";
 import { createTransformer, type Transformer } from "@transformer";
 import { TsAST } from "@typescript";
 import { tsTypeToGo } from "../type/tsTypeToGo";
+import { knownUnionMembers, memberFor } from "../type/unionMembers";
 import { undefinedShardDependency } from "../../sharedDependency/defaults";
 import { expressionTransformers } from ".";
 import { sequenceOperands, type SequencedOperand } from "../shared/sequence";
@@ -50,9 +52,21 @@ export const objectLiteralTransformer: Transformer<GoAST.Expression> = createTra
 					: undefined
 			))
 			: undefined;
+		// Attendu : une union de types connus (`Value[]`, `area({ kind: "circle", … })`).
+		// Le littéral prend le type Go exact du membre auquel il correspond (D-27).
+		const unionMember = useContextual
+			? undefined
+			: await DCommon.asyncPipe(
+				knownUnionMembers(contextual ?? arrayElementType, node, context),
+				async(members) => members && memberFor(await typeChecker.getTypeAtLocation(node), members, context),
+			);
+		const memberGo = unionMember && /^(struct|map\[)/.test(unionMember.rendered)
+			? DEither.right("go-type", unionMember.goType)
+			: undefined;
+		const ownType = arrayElementType ?? await typeChecker.getTypeAtLocation(node);
 		const goType = useContextual
 			? contextualGo
-			: await tsTypeToGo(arrayElementType ?? await typeChecker.getTypeAtLocation(node), node, context);
+			: memberGo ?? await tsTypeToGo(ownType, node, context);
 
 		if (DEither.isLeft(goType)) {
 			return goType;

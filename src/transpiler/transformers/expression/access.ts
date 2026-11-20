@@ -11,6 +11,7 @@ import { jsStringDependency, jsStringIdentifiers } from "../duplojs/string/core/
 import { undefinedShardDependency } from "../../sharedDependency/defaults";
 import { javascriptValue } from "./javascriptValues";
 import { getProperty } from "./javascriptObjects";
+import { knownUnionMembers, type UnionMember } from "../type/unionMembers";
 import { expressionTransformers } from ".";
 
 /**
@@ -76,6 +77,83 @@ function stringLength(target: GoAST.Expression, context: BuildContext) {
 	);
 }
 
+/**
+ * `shape.kind` sur une union d'objets connus (D-27) : chaque membre est rangé
+ * sous son type Go exact, un `switch` sur le type lit le bon champ.
+ * ```go
+ * func(value any) string {
+ *     switch value.(type) {
+ *     case Circle: return value.(Circle).Sourced_kind
+ *     case Square: return value.(Square).Sourced_kind
+ *     }
+ *     panic("union : type inattendu")
+ * }(shape)
+ * ```
+ * `undefined` : un membre n'est pas un objet, ou son champ n'a pas le bon type.
+ */
+interface UnionFieldRead {
+	readonly target: GoAST.Expression;
+	readonly name: string;
+}
+
+async function readUnionField(
+	members: readonly UnionMember[],
+	{ target, name }: UnionFieldRead,
+	node: TsAST.PropertyAccessExpression,
+	context: BuildContext,
+) {
+	const { typeChecker } = context.transpilation;
+	const resultGo = await goTypeOf(await typeChecker.getTypeAtLocation(node), node, context);
+
+	if (DEither.isLeft(resultGo) || !members.every((member) => member.rendered.startsWith("struct"))) {
+		return undefined;
+	}
+
+	const result = DEither.unwrapRight(resultGo);
+	const value = go.id("value");
+	const cases: GoAST.TypeSwitchCase[] = [];
+
+	for (const member of members) {
+		const fieldType = await typeChecker.getTypeOfPropertyOfType(member.types[0]!, name);
+		const fieldGo = fieldType && await goTypeOf(fieldType, node, context);
+
+		if (!fieldGo || DEither.isLeft(fieldGo)) {
+			return undefined;
+		}
+
+		const read = GoAST.createSelectorExpression({
+			target: go.assert(value, member.goType),
+			identifier: context.createSourceIdentifier(name),
+		});
+		const fieldRendered = render(DEither.unwrapRight(fieldGo));
+		const resultRendered = render(result);
+
+		if (fieldRendered !== resultRendered && resultRendered !== "any" && fieldRendered !== "any") {
+			return undefined;
+		}
+
+		cases.push(GoAST.createTypeSwitchCase({
+			types: DCommon.cast([member.goType]),
+			statements: [go.return(fieldRendered === "any" && resultRendered !== "any" ? go.assert(read, result) : read)],
+		}));
+	}
+
+	return go.call(
+		GoAST.createFunctionLiteral({
+			arguments: [go.parameter("value", go.types.any)],
+			returnTypes: [result],
+			body: go.block([
+				GoAST.createTypeSwitchStatementWithoutDefault({
+					expression: value,
+					cases: DCommon.cast(cases),
+				}),
+				go.call("panic", [go.string("union : type inattendu")]) as unknown as GoAST.Statement,
+			]),
+		}),
+		[target],
+	);
+}
+
 export const propertyAccessTransformer: Transformer<GoAST.Expression> = createTransformer(
 	async(node, context): Promise<Result> => {
 		if (!TsAST.isPropertyAccessExpression(node) || !TsAST.isIdentifier(node.name)) {
@@ -115,6 +193,17 @@ export const propertyAccessTransformer: Transformer<GoAST.Expression> = createTr
 		}
 
 		const rendered = render(DEither.unwrapRight(targetGoType));
+
+		// `shape.kind` sur une union de types connus : un switch sur le type (D-27).
+		const members = rendered === "any" ? await knownUnionMembers(targetType, node.expression, context) : undefined;
+		const unionRead = members && await readUnionField(members, {
+			target: target.result,
+			name,
+		}, node, context);
+
+		if (unionRead) {
+			return success(unionRead);
+		}
 
 		// `raw.name` sur un `any` : lecture par nom, à l'exécution, comme JS (D-20).
 		if (rendered === "any") {
